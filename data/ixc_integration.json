@@ -1,0 +1,14 @@
+{
+  "enabled": false,
+  "base_url": "",
+  "token": "123:abc",
+  "self_signed": true,
+  "auth_mode": "auto",
+  "timeout_seconds": 15,
+  "resource_names": {
+    "customers": "cliente",
+    "contracts": "cliente_contrato",
+    "fiber_clients": "radpop_radio_cliente_fibra",
+    "viability": "viabilidade_tecnica"
+  }
+}

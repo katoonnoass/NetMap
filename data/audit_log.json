@@ -1,0 +1,328 @@
+[
+  {
+    "timestamp": "2026-04-24 09:13:28",
+    "project_id": null,
+    "action": "login",
+    "username": "codex_test",
+    "entity_type": "session",
+    "entity_id": "codex_test",
+    "message": "Login realizado por \"codex_test\"",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-04-24 09:29:05",
+    "project_id": null,
+    "action": "login",
+    "username": "admin",
+    "entity_type": "session",
+    "entity_id": "admin",
+    "message": "Login realizado por \"admin\"",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-04-24 09:31:34",
+    "project_id": null,
+    "action": "login",
+    "username": "admin",
+    "entity_type": "session",
+    "entity_id": "admin",
+    "message": "Login realizado por \"admin\"",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-04-24 09:31:51",
+    "project_id": "teste",
+    "action": "positions_saved",
+    "username": "admin",
+    "entity_type": "project",
+    "entity_id": "teste",
+    "message": "Posicoes da topologia atualizadas",
+    "extra": {
+      "count": 5
+    }
+  },
+  {
+    "timestamp": "2026-04-24 09:41:16",
+    "project_id": null,
+    "action": "login",
+    "username": "codex_test",
+    "entity_type": "session",
+    "entity_id": "codex_test",
+    "message": "Login realizado por \"codex_test\"",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-04-24 09:41:16",
+    "project_id": "teste",
+    "action": "incident_created",
+    "username": "codex_test",
+    "entity_type": "incident",
+    "entity_id": 37,
+    "message": "Incidente \"Teste incidente\" criado",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-04-24 09:41:16",
+    "project_id": "teste",
+    "action": "incident_updated",
+    "username": "codex_test",
+    "entity_type": "incident",
+    "entity_id": 37,
+    "message": "Incidente \"Teste incidente\" atualizado",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-04-24 09:41:16",
+    "project_id": "teste",
+    "action": "incident_deleted",
+    "username": "codex_test",
+    "entity_type": "incident",
+    "entity_id": 37,
+    "message": "Incidente #37 removido",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-04-24 09:47:48",
+    "project_id": null,
+    "action": "login",
+    "username": "codex_test",
+    "entity_type": "session",
+    "entity_id": "codex_test",
+    "message": "Login realizado por \"codex_test\"",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-04-24 09:47:48",
+    "project_id": "teste",
+    "action": "service_order_created",
+    "username": "codex_test",
+    "entity_type": "service_order",
+    "entity_id": 44,
+    "message": "Ordem de servico \"OS Teste\" criada",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-04-24 09:47:48",
+    "project_id": "teste",
+    "action": "service_order_updated",
+    "username": "codex_test",
+    "entity_type": "service_order",
+    "entity_id": 44,
+    "message": "Ordem de servico \"OS Teste\" atualizada",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-04-24 09:47:48",
+    "project_id": "teste",
+    "action": "service_order_deleted",
+    "username": "codex_test",
+    "entity_type": "service_order",
+    "entity_id": 44,
+    "message": "Ordem de servico #44 removida",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-04-24 10:05:16",
+    "project_id": null,
+    "action": "login",
+    "username": "admin",
+    "entity_type": "session",
+    "entity_id": "admin",
+    "message": "Login realizado por \"admin\"",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-04-24 10:05:16",
+    "project_id": null,
+    "action": "ixc_config_updated",
+    "username": "admin",
+    "entity_type": "integration",
+    "entity_id": "ixc",
+    "message": "Configuracao da integracao IXC atualizada",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-04-24 10:10:50",
+    "project_id": null,
+    "action": "login",
+    "username": "admin",
+    "entity_type": "session",
+    "entity_id": "admin",
+    "message": "Login realizado por \"admin\"",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-04-24 10:11:02",
+    "project_id": null,
+    "action": "login",
+    "username": "admin",
+    "entity_type": "session",
+    "entity_id": "admin",
+    "message": "Login realizado por \"admin\"",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-04-24 10:11:20",
+    "project_id": null,
+    "action": "login",
+    "username": "admin",
+    "entity_type": "session",
+    "entity_id": "admin",
+    "message": "Login realizado por \"admin\"",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-04-24 10:34:14",
+    "project_id": null,
+    "action": "login",
+    "username": "admin",
+    "entity_type": "session",
+    "entity_id": "admin",
+    "message": "Login realizado por \"admin\"",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-04-24 10:34:14",
+    "project_id": "teste",
+    "action": "project_geodata_imported",
+    "username": "admin",
+    "entity_type": "project",
+    "entity_id": "teste",
+    "message": "Importacao geoespacial de \"amostra.kml\" concluida",
+    "extra": {
+      "file_name": "amostra.kml",
+      "imported_elements": 1,
+      "imported_connections": 0,
+      "skipped_connections": 0
+    }
+  },
+  {
+    "timestamp": "2026-04-24 10:34:48",
+    "project_id": null,
+    "action": "login",
+    "username": "admin",
+    "entity_type": "session",
+    "entity_id": "admin",
+    "message": "Login realizado por \"admin\"",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-04-24 10:34:48",
+    "project_id": "teste",
+    "action": "element_deleted",
+    "username": "admin",
+    "entity_type": "element",
+    "entity_id": 52,
+    "message": "Elemento \"CTO Teste KML\" removido",
+    "extra": {
+      "tipo": "cto"
+    }
+  },
+  {
+    "timestamp": "2026-04-24 10:35:01",
+    "project_id": null,
+    "action": "login",
+    "username": "admin",
+    "entity_type": "session",
+    "entity_id": "admin",
+    "message": "Login realizado por \"admin\"",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-04-24 10:35:01",
+    "project_id": "teste",
+    "action": "project_geodata_imported",
+    "username": "admin",
+    "entity_type": "project",
+    "entity_id": "teste",
+    "message": "Importacao geoespacial de \"validacao_tmp.kml\" concluida",
+    "extra": {
+      "file_name": "validacao_tmp.kml",
+      "imported_elements": 1,
+      "imported_connections": 0,
+      "skipped_connections": 0
+    }
+  },
+  {
+    "timestamp": "2026-04-24 10:35:01",
+    "project_id": "teste",
+    "action": "element_deleted",
+    "username": "admin",
+    "entity_type": "element",
+    "entity_id": 57,
+    "message": "Elemento \"VALIDACAO TMP KML\" removido",
+    "extra": {
+      "tipo": "poste"
+    }
+  },
+  {
+    "timestamp": "2026-04-24 10:38:07",
+    "project_id": null,
+    "action": "login",
+    "username": "admin",
+    "entity_type": "session",
+    "entity_id": "admin",
+    "message": "Login realizado por \"admin\"",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-04-24 10:39:39",
+    "project_id": null,
+    "action": "login",
+    "username": "admin",
+    "entity_type": "session",
+    "entity_id": "admin",
+    "message": "Login realizado por \"admin\"",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-04-24 10:39:50",
+    "project_id": null,
+    "action": "login",
+    "username": "admin",
+    "entity_type": "session",
+    "entity_id": "admin",
+    "message": "Login realizado por \"admin\"",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-04-24 10:47:04",
+    "project_id": null,
+    "action": "login",
+    "username": "admin",
+    "entity_type": "session",
+    "entity_id": "admin",
+    "message": "Login realizado por \"admin\"",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-04-24 10:48:15",
+    "project_id": null,
+    "action": "login",
+    "username": "admin",
+    "entity_type": "session",
+    "entity_id": "admin",
+    "message": "Login realizado por \"admin\"",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-04-24 10:48:28",
+    "project_id": null,
+    "action": "login",
+    "username": "admin",
+    "entity_type": "session",
+    "entity_id": "admin",
+    "message": "Login realizado por \"admin\"",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-04-24 10:51:20",
+    "project_id": null,
+    "action": "login",
+    "username": "admin",
+    "entity_type": "session",
+    "entity_id": "admin",
+    "message": "Login realizado por \"admin\"",
+    "extra": {}
+  }
+]

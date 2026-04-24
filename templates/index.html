@@ -1,0 +1,988 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<title>ISP NetMap Pro</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="/static/vis-network.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link rel="stylesheet" href="/static/app.css"/>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div id="topbar">
+  <div class="logo" onclick="openProjectsModal()" title="Gerenciar Projetos">
+    <svg width="26" height="26" viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="13" stroke="#00c8ff" stroke-width="1.5"/><path d="M6 14 Q10 8 14 14 Q18 20 22 14" stroke="#00c8ff" stroke-width="2" fill="none" stroke-linecap="round"/><circle cx="6" cy="14" r="2" fill="#0080ff"/><circle cx="22" cy="14" r="2" fill="#00e676"/></svg>
+    ISP<span>NetMap</span>&nbsp;<span style="color:var(--text3);font-size:11px;font-weight:400">Pro</span>
+  </div>
+  <div style="width:1px;height:24px;background:var(--border)"></div>
+  <div class="project-selector" onclick="openProjectsModal()">
+    <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="8" y="1" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="1" y="8" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="8" y="8" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/></svg>
+    <span class="proj-name" id="topbar-project-name">Carregando...</span>
+    <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+  </div>
+  <div style="width:1px;height:24px;background:var(--border)"></div>
+  <button class="btn-ghost" onclick="toggleSidebar()">Menu</button>
+  <button class="btn-primary" onclick="openAddModal()">Novo elemento</button>
+  <button class="btn-ghost" id="btn-cable" onclick="startCableModeWithSelection()">Novo cabo</button>
+  <div class="topbar-search">
+    <span>ðŸ”</span>
+    <input id="global-search-input" type="text" placeholder="Buscar elemento, cliente, cabo, tipo..." oninput="handleGlobalSearch(this.value)">
+  </div>
+  <div class="topbar-stats">
+    <div class="stat-pill"><div class="stat-dot" style="background:var(--green)"></div><span id="stat-ativos">0</span></div>
+    <div class="stat-pill"><div class="stat-dot" style="background:var(--red)"></div><span id="stat-offline">0</span></div>
+    <div class="stat-pill"><div class="stat-dot" style="background:var(--orange)"></div><span id="stat-alerta">0</span></div>
+  </div>
+  <!-- User chip -->
+  <div style="margin-left:8px;flex-shrink:0">
+    <div class="user-chip" id="user-chip" onclick="toggleUserDropdown(event)">
+      <div class="user-avatar" id="user-avatar" style="background:rgba(0,200,255,.2);color:var(--accent)">?</div>
+      <span id="user-nome" style="max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">â€¦</span>
+      <span class="role-badge" id="user-role-badge"></span>
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    </div>
+  </div>
+</div>
+<input type="file" id="geo-import-input" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz" style="display:none" onchange="handleGeoImport(event)">
+
+<!-- MAIN -->
+<div id="main-layout">
+  <div id="sidebar">
+    <div class="sidebar-scroll">
+      <div class="module-strip">
+      <button class="module-chip active" id="module-overview" onclick="switchTab('dashboard')">Visao geral</button>
+      <button class="module-chip" id="module-cabos" onclick="switchTab('cables')">Cabos</button>
+      <button class="module-chip" id="module-clientes" onclick="switchTab('customers')">Clientes</button>
+      <button class="module-chip" id="module-incidentes" onclick="switchTab('incidents')">Incidentes</button>
+      <button class="module-chip" id="module-os" onclick="switchTab('orders')">Ordens</button>
+      <button class="module-chip" id="module-relatorios" onclick="switchTab('reports')">Relatorios</button>
+      <button class="module-chip" id="module-ixc" onclick="switchTab('ixc')">IXC</button>
+      </div>
+      <div class="sidebar-tools">
+        <input id="sidebar-search" class="sidebar-search" placeholder="Filtrar lista..." oninput="handleGlobalSearch(this.value)">
+        <select id="sidebar-status-filter" class="sidebar-select" onchange="setStatusFilter(this.value)">
+          <option value="all">Todos os status</option>
+          <option value="ativo">Ativos</option>
+          <option value="alerta">Em alerta</option>
+          <option value="offline">Offline</option>
+        </select>
+      </div>
+      <div class="sidebar-section">Tipos</div>
+      <div id="type-filter-list"></div>
+      <div class="sidebar-section" style="margin-top:8px">Elementos</div>
+      <div id="node-list"></div>
+    </div>
+  </div>
+
+  <div id="center">
+    <div id="overview-bar">
+      <div class="ov-stat"><div class="ov-label">Total</div><div class="ov-value" id="ov-total" style="color:var(--accent)">â€”</div></div>
+      <div class="ov-stat"><div class="ov-label">Cabos</div><div class="ov-value" id="ov-conn" style="color:var(--text2)">â€”</div></div>
+      <div class="ov-stat"><div class="ov-label">Clientes</div><div class="ov-value" id="ov-clientes" style="color:#a0f0c0">â€”</div></div>
+      <div class="ov-stat"><div class="ov-label">CTOs</div><div class="ov-value" id="ov-cto" style="color:var(--green)">â€”</div></div>
+      <div class="ov-stat"><div class="ov-label">OLTs</div><div class="ov-value" id="ov-olt" style="color:#0080ff">â€”</div></div>
+    </div>
+
+    <div id="map-toolbar">
+      <button class="tab-btn" id="tab-dashboard" onclick="switchTab('dashboard')">Dashboard</button>
+      <button class="tab-btn active" id="tab-geomap" onclick="switchTab('geomap')">Mapa</button>
+      <button class="tab-btn" id="tab-topology" onclick="switchTab('topology')">Topologia</button>
+      <button class="tab-btn" id="tab-dio" onclick="switchTab('dio')">DIO</button>
+      <button class="tab-btn" id="tab-table" onclick="switchTab('table')">Inventario</button>
+      <button class="tab-btn" id="tab-validation" onclick="switchTab('validation')">Validacao</button>
+      <div class="map-controls">
+        <div class="action-group">
+          <button class="btn-ghost" onclick="triggerGeoImport()" style="padding:6px 10px;font-size:11px">Importar KML/KMZ</button>
+          <button class="btn-ghost" onclick="exportKml()" style="padding:6px 10px;font-size:11px">KML</button>
+          <button class="btn-ghost" onclick="exportKmz()" style="padding:6px 10px;font-size:11px">KMZ</button>
+          <button class="btn-ghost" onclick="exportData()" style="padding:6px 10px;font-size:11px">JSON</button>
+        </div>
+        <div class="action-divider"></div>
+        <button class="btn-ghost" onclick="exportProjectSummary()" style="padding:6px 10px;font-size:11px">Relatorio</button>
+        <select class="btn-ghost" id="map-layer-select" onchange="changeMapLayer(this.value)" style="padding:5px 9px;cursor:pointer;font-size:11px">
+          <option value="osm">OpenStreetMap</option>
+          <option value="satellite">Satelite</option>
+          <option value="dark">Esri Dark</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="view-dashboard" class="view-tab">
+      <div id="dashboard-view" class="dashboard-view">
+        <div class="dashboard-grid">
+          <div class="dashboard-card">
+            <h3>Elementos</h3>
+            <div class="big-number" id="dash-total-elements">0</div>
+            <div class="subline" id="dash-unpositioned">0 sem coordenadas</div>
+          </div>
+          <div class="dashboard-card">
+            <h3>Conectividade</h3>
+            <div class="big-number" id="dash-total-connections">0</div>
+            <div class="subline" id="dash-broken-connections">0 cabos rompidos</div>
+          </div>
+          <div class="dashboard-card">
+            <h3>Clientes</h3>
+            <div class="big-number" id="dash-total-clients">0</div>
+            <div class="subline" id="dash-offline-elements">0 elementos offline</div>
+          </div>
+          <div class="dashboard-card">
+            <h3>Capacidade CTO</h3>
+            <div class="big-number" id="dash-total-ctos">0</div>
+            <div class="subline" id="dash-saturated-ctos">0 CTOs acima de 80%</div>
+          </div>
+        </div>
+        <div class="dashboard-layout">
+          <div class="dashboard-stack">
+            <div class="dashboard-card">
+              <h3>SaÃºde Operacional</h3>
+              <div class="health-pill-row" id="dashboard-health-pills"></div>
+            </div>
+            <div class="dashboard-card">
+              <h3>Alertas e PendÃªncias</h3>
+              <div class="alert-list" id="dashboard-alert-list"></div>
+            </div>
+          </div>
+          <div class="dashboard-stack">
+            <div class="dashboard-card">
+              <h3>Atividade Recente</h3>
+              <div class="activity-list" id="dashboard-activity-list"></div>
+            </div>
+            <div class="dashboard-card">
+              <h3>Top CTOs por OcupaÃ§Ã£o</h3>
+              <div class="capacity-list" id="dashboard-capacity-list"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GEO MAP TAB -->
+    <div id="view-geomap" class="view-tab active" style="position:relative">
+      <div id="geo-map-container">
+        <div id="geo-map"></div>
+        <!-- FLOATING TOOLBAR -->
+        <div id="map-floating-bar">
+          <button class="mode-btn active" id="mode-select" onclick="setMapMode('select')">â†– Selecionar</button>
+          <button class="mode-btn" id="mode-place" onclick="setMapMode('place')">ðŸ“ Posicionar</button>
+          <div class="sep"></div>
+          <button class="mode-btn" id="mode-cable" onclick="setMapMode('cable')">ðŸ”Œ TraÃ§ar Cabo</button>
+          <div class="sep"></div>
+          <button class="mode-btn" onclick="geoMap.setView([-16.8225,-49.245],13)">ðŸ“ Aparecida GO</button>
+          <button class="mode-btn" onclick="fitMapToBounds()">â›¶ Ajustar</button>
+        </div>
+        <!-- ADDRESS / CEP SEARCH BAR -->
+        <div id="addr-search-bar" style="position:absolute;top:12px;right:12px;z-index:400;display:flex;gap:6px;align-items:center;background:rgba(13,21,32,.92);border:1px solid var(--border2);border-radius:10px;padding:5px 8px;backdrop-filter:blur(8px)">
+          <span style="font-size:14px">ðŸ”</span>
+          <input id="addr-search-input" placeholder="CEP, bairro, endereÃ§o..." style="background:transparent;border:none;outline:none;color:var(--text);font-size:12px;width:210px;font-family:sans-serif" onkeydown="if(event.key==='Enter')searchAddress()">
+          <button onclick="searchAddress()" style="background:var(--accent2);border:none;border-radius:5px;color:#fff;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer">Ir</button>
+        </div>
+        <div id="addr-results" style="position:absolute;top:56px;right:12px;z-index:401;background:var(--surface);border:1px solid var(--border2);border-radius:8px;min-width:300px;display:none;max-height:220px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.5)"></div>
+        <div id="cable-waypoint-hint" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- TOPOLOGY TAB -->
+    <div id="view-topology" class="view-tab" style="flex:1;position:relative">
+      <div style="position:absolute;inset:0">
+        <div id="network-canvas" style="width:100%;height:100%"></div>
+      </div>
+    </div>
+
+    <!-- DIO TAB -->
+    <div id="view-dio" class="view-tab">
+      <div id="dio-view">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <div style="font-size:18px;font-weight:800">Painel de DIO</div>
+          <button class="btn-primary" onclick="openAddDioModal()">+ Novo DIO</button>
+        </div>
+        <div style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap;font-size:12px">
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:3px;background:#1a3040;border:1px solid var(--border2);display:inline-block"></span> Livre</span>
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:3px;background:var(--green);display:inline-block"></span> Ocupada</span>
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:3px;background:var(--red);display:inline-block"></span> ManutenÃ§Ã£o</span>
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:3px;background:var(--orange);display:inline-block"></span> Reservada</span>
+        </div>
+        <div id="dio-panels-container"></div>
+      </div>
+    </div>
+
+    <!-- TABLE TAB -->
+    <div id="view-table" class="view-tab">
+      <div id="table-view">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <div style="font-size:18px;font-weight:800">InventÃ¡rio</div>
+          <input class="search-input" style="width:260px" placeholder="ðŸ” Buscar..." id="table-search" oninput="filterTable()">
+        </div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr style="background:var(--surface);border-bottom:2px solid var(--border2)">
+              <th style="padding:10px 14px;text-align:left;color:var(--text2);font-size:9px;letter-spacing:1px;text-transform:uppercase">ID</th>
+              <th style="padding:10px 14px;text-align:left;color:var(--text2);font-size:9px;letter-spacing:1px;text-transform:uppercase">Nome</th>
+              <th style="padding:10px 14px;text-align:left;color:var(--text2);font-size:9px;letter-spacing:1px;text-transform:uppercase">Tipo</th>
+              <th style="padding:10px 14px;text-align:left;color:var(--text2);font-size:9px;letter-spacing:1px;text-transform:uppercase">Status</th>
+              <th style="padding:10px 14px;text-align:left;color:var(--text2);font-size:9px;letter-spacing:1px;text-transform:uppercase">Coord.</th>
+              <th style="padding:10px 14px;text-align:left;color:var(--text2);font-size:9px;letter-spacing:1px;text-transform:uppercase">AÃ§Ãµes</th>
+            </tr></thead>
+            <tbody id="inv-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="view-incidents" class="view-tab">
+      <div id="table-view">
+        <div class="incident-toolbar">
+          <div style="font-size:18px;font-weight:800">Incidentes Operacionais</div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <input class="search-input" style="width:260px" placeholder="Buscar incidente..." id="incident-search" oninput="renderIncidents()">
+            <button class="btn-primary" onclick="openIncidentModal()">+ Novo Incidente</button>
+          </div>
+        </div>
+        <div class="incident-list" id="incident-list"></div>
+      </div>
+    </div>
+
+    <div id="view-customers" class="view-tab">
+      <div id="table-view">
+        <div class="incident-toolbar">
+          <div style="font-size:18px;font-weight:800">Clientes</div>
+          <input class="search-input" style="width:260px" placeholder="Buscar cliente..." id="customer-search" oninput="renderCustomers()">
+        </div>
+        <div class="customer-grid" id="customer-list"></div>
+      </div>
+    </div>
+
+    <div id="view-orders" class="view-tab">
+      <div id="table-view">
+        <div class="incident-toolbar">
+          <div style="font-size:18px;font-weight:800">Ordens de Servico</div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <input class="search-input" style="width:260px" placeholder="Buscar ordem..." id="order-search" oninput="renderOrders()">
+            <button class="btn-primary" onclick="openOrderModal()">+ Nova OS</button>
+          </div>
+        </div>
+        <div class="order-grid" id="order-list"></div>
+      </div>
+    </div>
+
+    <div id="view-cables" class="view-tab">
+      <div id="table-view">
+        <div class="incident-toolbar">
+          <div style="font-size:18px;font-weight:800">Cabos e Enlaces</div>
+          <input class="search-input" style="width:280px" placeholder="Buscar cabo, fibra, origem ou destino..." id="cable-search" oninput="renderCables()">
+        </div>
+        <div class="cable-grid" id="cable-list"></div>
+      </div>
+    </div>
+
+    <div id="view-validation" class="view-tab">
+      <div id="table-view">
+        <div class="report-toolbar">
+          <div style="font-size:18px;font-weight:800">Saude da Topologia</div>
+          <button class="btn-ghost" onclick="renderValidation()">Atualizar Visao</button>
+        </div>
+        <div class="validation-grid" style="margin-bottom:14px">
+          <div class="validation-card">
+            <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Score Tecnico</div>
+            <div style="font-size:34px;font-weight:800;color:var(--accent)" id="validation-score">0</div>
+            <div style="font-size:12px;color:var(--text2)" id="validation-score-caption">Sem analise</div>
+          </div>
+          <div class="validation-card">
+            <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Severidades</div>
+            <div class="ixc-pill-row">
+              <div class="ixc-pill" id="validation-high-pill">Alta: 0</div>
+              <div class="ixc-pill" id="validation-medium-pill">Media: 0</div>
+              <div class="ixc-pill" id="validation-low-pill">Baixa: 0</div>
+            </div>
+          </div>
+        </div>
+        <div class="validation-card">
+          <div style="font-size:16px;font-weight:800;margin-bottom:10px">Pendencias encontradas</div>
+          <div class="issue-list" id="validation-issues"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="view-reports" class="view-tab">
+      <div id="table-view">
+        <div class="report-toolbar">
+          <div style="font-size:18px;font-weight:800">RelatÃ³rios Operacionais</div>
+          <button class="btn-primary" onclick="exportProjectSummary()">Exportar RelatÃ³rio</button>
+        </div>
+        <div class="reports-grid">
+          <div class="report-panel">
+            <div class="list-title" style="margin-bottom:10px">OcupaÃ§Ã£o de CTO</div>
+            <div id="reports-cto-table"></div>
+          </div>
+          <div class="report-panel">
+            <div class="list-title" style="margin-bottom:10px">Status por Tipo</div>
+            <div id="reports-type-table"></div>
+          </div>
+          <div class="report-panel">
+            <div class="list-title" style="margin-bottom:10px">Incidentes Abertos</div>
+            <div id="reports-open-incidents"></div>
+          </div>
+          <div class="report-panel">
+            <div class="list-title" style="margin-bottom:10px">Atividade Recente</div>
+            <div id="reports-activity"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="view-ixc" class="view-tab">
+      <div id="table-view">
+        <div class="report-toolbar">
+          <div style="font-size:18px;font-weight:800">Integracao IXC Soft</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn-ghost ixc-admin-only" onclick="testIxcConnectionUI()">Testar Conexao</button>
+            <button class="btn-primary ixc-admin-only" onclick="saveIxcConfigUI()">Salvar Configuracao</button>
+          </div>
+        </div>
+        <div class="ixc-grid">
+          <div class="ixc-card">
+            <div style="font-size:16px;font-weight:800;margin-bottom:12px">Conexao</div>
+            <div class="form-group">
+              <label class="form-label">URL base</label>
+              <input class="form-input" id="ixc-base-url" placeholder="https://seu-ixc/webservice/v1">
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Token</label>
+                <input class="form-input" id="ixc-token" placeholder="Cole o token do usuario webservice">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Modo de autenticacao</label>
+                <select class="form-select" id="ixc-auth-mode">
+                  <option value="auto">Auto detectar</option>
+                  <option value="bearer">Bearer</option>
+                  <option value="authorization">Authorization simples</option>
+                  <option value="x-auth-token">X-Auth-Token</option>
+                  <option value="ixcsoft">Header ixcsoft</option>
+                  <option value="query">Token na query</option>
+                  <option value="basic">Basic</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Timeout</label>
+                <input class="form-input" id="ixc-timeout" type="number" min="5" max="60" value="15">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Certificado</label>
+                <select class="form-select" id="ixc-self-signed">
+                  <option value="true">Permitir autoassinado</option>
+                  <option value="false">Validar SSL</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Status da integracao</label>
+              <select class="form-select" id="ixc-enabled">
+                <option value="true">Habilitada</option>
+                <option value="false">Desabilitada</option>
+              </select>
+            </div>
+            <div class="ixc-note" id="ixc-token-hint"></div>
+          </div>
+          <div class="ixc-card">
+            <div style="font-size:16px;font-weight:800;margin-bottom:12px">Sincronizacao para o Projeto</div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Fonte IXC</label>
+                <select class="form-select" id="ixc-sync-resource">
+                  <option value="customers">Clientes</option>
+                  <option value="fiber_clients">Clientes fibra</option>
+                  <option value="contracts">Contratos</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Criar como</label>
+                <select class="form-select" id="ixc-sync-target-type">
+                  <option value="cliente">Cliente</option>
+                  <option value="onu">ONU/ONT</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Recursos padrao IXC</label>
+              <div class="ixc-note">
+                Base oficial: HOST/webservice/v1.<br>
+                Recursos usuais: cliente, cliente_contrato, radpop_radio_cliente_fibra e viabilidade_tecnica.
+              </div>
+            </div>
+            <div class="form-group">
+              <button class="btn-primary ixc-admin-only" onclick="syncIxcProjectUI()">Sincronizar Agora</button>
+            </div>
+            <div class="ixc-result" id="ixc-sync-result">Nenhuma sincronizacao executada.</div>
+          </div>
+          <div class="ixc-card">
+            <div style="font-size:16px;font-weight:800;margin-bottom:12px">Ultimo Teste</div>
+            <div class="ixc-result" id="ixc-test-result">Nenhum teste executado.</div>
+          </div>
+          <div class="ixc-card">
+            <div style="font-size:16px;font-weight:800;margin-bottom:12px">Consulta de Viabilidade</div>
+            <div class="form-group">
+              <label class="form-label">Endereco</label>
+              <input class="form-input" id="ixc-viab-endereco" placeholder="Rua, avenida, logradouro">
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Numero</label>
+                <input class="form-input" id="ixc-viab-numero" placeholder="100">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Bairro</label>
+                <input class="form-input" id="ixc-viab-bairro" placeholder="Centro">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Cidade</label>
+                <input class="form-input" id="ixc-viab-cidade" placeholder="Aparecida de Goiania">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Estado</label>
+                <input class="form-input" id="ixc-viab-estado" placeholder="GO">
+              </div>
+            </div>
+            <div class="form-group">
+              <button class="btn-ghost ixc-admin-only" onclick="lookupIxcViabilityUI()">Consultar Viabilidade</button>
+            </div>
+            <div class="ixc-result" id="ixc-viability-result">Nenhuma consulta executada.</div>
+          </div>
+          <div class="ixc-card">
+            <div style="font-size:16px;font-weight:800;margin-bottom:12px">Notas de Integracao</div>
+            <div class="ixc-note">
+              Esta integracao foi preparada para o modelo publico documentado pela IXC Soft, com endpoint base webservice/v1 e token de usuario webservice.
+            </div>
+            <div style="height:10px"></div>
+            <div class="ixc-note">
+              O modo Auto detectar tenta combinacoes comuns de autenticacao antes de exigir ajuste manual.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hint-bar" id="hint-bar">
+      <div class="hint-item"><kbd>clique</kbd> Selecionar</div>
+      <div class="hint-item"><kbd>duplo clique</kbd> Editar</div>
+      <div class="hint-item"><kbd>clique direito</kbd> Menu</div>
+      <div class="hint-item"><kbd>ðŸ“ Posicionar</kbd> para mover nÃ³</div>
+      <div class="hint-item"><kbd>ðŸ”Œ TraÃ§ar Cabo</kbd> clique em nÃ³s + pontos do caminho</div>
+    </div>
+  </div>
+
+  <div id="right-panel" class="hidden">
+    <div class="panel-header">
+      <div class="panel-title" id="panel-title">Detalhes</div>
+      <div style="display:flex;gap:5px">
+        <button class="btn-ghost" style="padding:3px 8px;font-size:10px" onclick="openEditModal(selectedNodeId)">âœï¸</button>
+        <button class="panel-close" onclick="closePanel()">Ã—</button>
+      </div>
+    </div>
+    <div class="panel-body" id="panel-body"></div>
+  </div>
+</div>
+
+<!-- USER DROPDOWN -->
+<div class="user-dropdown" id="user-dropdown">
+  <div style="padding:10px 13px;border-bottom:1px solid var(--border)">
+    <div style="font-size:12px;font-weight:700" id="dd-nome">â€”</div>
+    <div style="font-size:10px;color:var(--text3);font-family:'Courier New',monospace" id="dd-username">â€”</div>
+  </div>
+  <div class="user-dd-item" id="dd-manage-users" onclick="openUsersModal()" style="display:none">
+    ðŸ‘¥ Gerenciar UsuÃ¡rios
+  </div>
+  <div class="user-dd-sep"></div>
+  <div class="user-dd-item" onclick="doLogout()" style="color:var(--red)">
+    ðŸšª Sair
+  </div>
+</div>
+
+<!-- READONLY HINT -->
+<div class="readonly-hint" id="readonly-hint">ðŸ‘ï¸ Modo somente leitura</div>
+
+<!-- CTX MENU -->
+<div id="ctx-menu">
+  <div class="ctx-item" onclick="ctxEdit()">âœï¸ Editar</div>
+  <div class="ctx-item" id="ctx-toggle-broken" onclick="ctxToggleBroken()" style="display:none">âš ï¸ Romper/Reparar</div>
+  <div class="ctx-item" onclick="ctxCable()">ðŸ”Œ Iniciar Cabo Aqui</div>
+  <div class="ctx-item" onclick="ctxLocate()">ðŸ—ºï¸ Ver no Mapa</div>
+  <div class="ctx-item" id="ctx-fusion" onclick="ctxFusion()" style="display:none;color:var(--yellow)">ðŸ”€ Mapa de FusÃ£o</div>
+  <div class="ctx-item" id="ctx-cto-ports" onclick="ctxCtoPorts()" style="display:none;color:var(--green)">ðŸ“¡ Portas CTO</div>
+  <div class="ctx-item" onclick="ctxReposition()">â†• Reposicionar</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" onclick="ctxStatus('ativo')" style="color:var(--green)">â— Ativo</div>
+  <div class="ctx-item" onclick="ctxStatus('offline')" style="color:var(--red)">â— Offline</div>
+  <div class="ctx-item" onclick="ctxStatus('alerta')" style="color:var(--orange)">â— Alerta</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" onclick="ctxDelete()" style="color:var(--red)">ðŸ—‘ï¸ Remover</div>
+</div>
+
+<!-- ADD ELEMENT MODAL -->
+<div class="modal-overlay" id="modal-add">
+  <div class="modal-box">
+    <div class="modal-head"><h2>Adicionar Elemento</h2><button class="modal-close" onclick="closeModal('modal-add')">Ã—</button></div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Tipo de Elemento</label>
+        <div class="type-selector-grid" id="type-selector"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Nome <span style="color:var(--text3);font-weight:400;font-size:9px">(opcional â€” gerado automaticamente)</span></label><input class="form-input" id="add-nome" placeholder="Deixe em branco para gerar automaticamente"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Status</label>
+          <select class="form-select" id="add-status"><option value="ativo">Ativo</option><option value="offline">Offline</option><option value="alerta">Alerta</option></select>
+        </div>
+        <div class="form-group"><label class="form-label">Modelo</label><input class="form-input" id="add-modelo" placeholder="Ex: Huawei MA5800"></div>
+      </div>
+      <div class="form-group"><label class="form-label">EndereÃ§o / LocalizaÃ§Ã£o</label><input class="form-input" id="add-endereco" placeholder="Ex: Rua das Flores, 100 - Aparecida GO"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Latitude</label><input class="form-input" id="add-lat" type="number" step="any" placeholder="-16.82..." id="add-lat"></div>
+        <div class="form-group"><label class="form-label">Longitude</label><input class="form-input" id="add-lng" type="number" step="any" placeholder="-49.24..."></div>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:-8px;margin-bottom:12px">ðŸ’¡ Deixe as coordenadas em branco e use o modo <b style="color:var(--accent)">ðŸ“ Posicionar</b> no mapa apÃ³s adicionar.</div>
+      <div class="form-group"><label class="form-label">Detalhes</label><textarea class="form-textarea" id="add-detalhes" placeholder="ObservaÃ§Ãµes..."></textarea></div>
+      
+      <!-- Campo de capacidade (aparece apenas para CTO) -->
+      <div id="cto-capacity-container" style="display:none;">
+        <div class="form-group">
+          <label class="form-label">Capacidade (portas)</label>
+          <select class="form-select" id="add-cto-capacity">
+            <option value="8">8 portas</option>
+            <option value="16" selected>16 portas</option>
+            <option value="24">24 portas</option>
+          </select>
+        </div>
+      </div>
+      
+      <div id="add-props-container"></div>
+    </div>
+    <div class="modal-footer"><button class="btn-ghost" onclick="closeModal('modal-add')">Cancelar</button><button class="btn-primary" onclick="saveElement()">Salvar</button></div>
+  </div>
+</div>
+
+<!-- EDIT MODAL -->
+<div class="modal-overlay" id="modal-edit">
+  <div class="modal-box">
+    <div class="modal-head"><h2>Editar Elemento</h2><button class="modal-close" onclick="closeModal('modal-edit')">Ã—</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-id">
+      <div class="form-group"><label class="form-label">Nome</label><input class="form-input" id="edit-nome"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Tipo</label>
+          <select class="form-select" id="edit-tipo">
+            <option value="bgp">BGP/Upstream</option><option value="core">Core/DC</option><option value="dio">DIO</option>
+            <option value="olt">OLT</option><option value="onu">ONU/ONT</option><option value="ceo">CEO</option>
+            <option value="cto">CTO</option><option value="splitter">Splitter</option><option value="switch">Switch</option>
+            <option value="roteador">Roteador</option><option value="poste">Poste</option><option value="cliente">Cliente</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Status</label>
+          <select class="form-select" id="edit-status"><option value="ativo">Ativo</option><option value="offline">Offline</option><option value="alerta">Alerta</option></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Modelo</label><input class="form-input" id="edit-modelo"></div>
+        <div class="form-group"><label class="form-label">EndereÃ§o</label><input class="form-input" id="edit-endereco"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Latitude</label><input class="form-input" id="edit-lat" type="number" step="any"></div>
+        <div class="form-group"><label class="form-label">Longitude</label><input class="form-input" id="edit-lng" type="number" step="any"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Detalhes</label><textarea class="form-textarea" id="edit-detalhes"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-danger" id="edit-delete-btn">Remover</button>
+      <button class="btn-ghost" onclick="closeModal('modal-edit')">Cancelar</button>
+      <button class="btn-primary" onclick="updateElement()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- CABLE MODAL -->
+<div class="modal-overlay" id="modal-cable">
+  <div class="modal-box" style="width:500px">
+    <div class="modal-head"><h2>ðŸ’¾ Salvar Cabo / ConexÃ£o</h2><button class="modal-close" onclick="cancelCableMode()">Ã—</button></div>
+    <div class="modal-body">
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:14px">
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Rota do Cabo</div>
+        <div style="font-size:12px;color:var(--text2)">
+          De: <strong id="cable-from-name" style="color:var(--accent)">â€”</strong>
+          â†’ Para: <strong id="cable-to-name" style="color:var(--accent)">â€”</strong>
+        </div>
+        <div id="cable-waypoints-count" style="font-size:11px;color:var(--text3);margin-top:4px"></div>
+      </div>
+      <div class="waypoint-list" id="cable-waypoints-list"></div>
+      
+      <div class="form-row" style="margin-top:14px">
+        <div class="form-group"><label class="form-label">Porta Origem</label><input class="form-input" id="cable-porta" placeholder="Ex: PON 1/0/1"></div>
+        <div class="form-group"><label class="form-label">Tipo de Cabo</label>
+          <select class="form-select" id="cable-tipo" onchange="updateCableFOCount()"></select>
+        </div>
+      </div>
+      
+      <div class="form-group"><label class="form-label">Cor do Tubete</label><div class="fiber-colors-grid" id="cable-color-grid"></div></div>
+      <div class="form-group"><label class="form-label">ObservaÃ§Ãµes</label><input class="form-input" id="cable-obs" placeholder="Ex: Cabo passando por Av. Brasil..."></div>
+      
+      <!-- Campos de metragem e estado -->
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Metragem (metros)</label>
+          <input class="form-input" id="cable-length" type="number" step="0.1" placeholder="Ex: 350.5" readonly>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Estado</label>
+          <select class="form-select" id="cable-broken">
+            <option value="false">âœ… Ãntegro</option>
+            <option value="true">ðŸ’” Rompido</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-danger" onclick="cancelCableMode()">Cancelar</button>
+      <button class="btn-primary" onclick="saveCable()">Salvar Cabo</button>
+    </div>
+  </div>
+</div>
+
+<!-- SELECT CABLE TYPE MODAL -->
+<div class="modal-overlay" id="modal-select-cable">
+  <div class="modal-box" style="width:480px">
+    <div class="modal-head"><h2>ðŸ”Œ Selecionar Cabo</h2><button class="modal-close" onclick="closeModal('modal-select-cable')">Ã—</button></div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Tipo de Cabo</label>
+        <select class="form-select" id="pre-cable-tipo"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Cor do Tubete</label>
+        <div class="fiber-colors-grid" id="pre-cable-color-grid"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Porta de Origem (opcional)</label>
+        <input class="form-input" id="pre-cable-porta" placeholder="Ex: PON 1/0/1">
+      </div>
+      <div class="form-group">
+        <label class="form-label">ObservaÃ§Ãµes</label>
+        <input class="form-input" id="pre-cable-obs" placeholder="Ex: Rota aÃ©rea">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-select-cable')">Cancelar</button>
+      <button class="btn-primary" onclick="confirmCableTypeAndStart()">Iniciar TraÃ§ado</button>
+    </div>
+  </div>
+</div>
+
+<!-- DIO MODAL -->
+<div class="modal-overlay" id="modal-dio">
+  <div class="modal-box" style="width:360px">
+    <div class="modal-head"><h2>Novo DIO</h2><button class="modal-close" onclick="closeModal('modal-dio')">Ã—</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">ID</label><input class="form-input" id="dio-id" placeholder="Ex: DIO-CORE-01"></div>
+      <div class="form-group"><label class="form-label">Nome</label><input class="form-input" id="dio-name" placeholder="Ex: DIO Principal"></div>
+      <div class="form-group"><label class="form-label">LocalizaÃ§Ã£o</label><input class="form-input" id="dio-loc" placeholder="Ex: Rack 2, Sala TÃ©cnica"></div>
+      <div class="form-group"><label class="form-label">Capacidade (portas)</label><input class="form-input" type="number" id="dio-cap" value="24" min="4" max="144" step="4"></div>
+    </div>
+    <div class="modal-footer"><button class="btn-ghost" onclick="closeModal('modal-dio')">Cancelar</button><button class="btn-primary" onclick="saveDio()">Criar DIO</button></div>
+  </div>
+</div>
+
+<!-- PORT MODAL (DIO) -->
+<div class="modal-overlay" id="modal-port">
+  <div class="modal-box" style="width:360px">
+    <div class="modal-head"><h2 id="port-modal-title">Configurar Porta</h2><button class="modal-close" onclick="closeModal('modal-port')">Ã—</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="port-dio-id"><input type="hidden" id="port-num">
+      <div class="form-group"><label class="form-label">Status</label>
+        <select class="form-select" id="port-status">
+          <option value="livre">Livre</option><option value="ocupada">Ocupada</option>
+          <option value="manutencao">ManutenÃ§Ã£o</option><option value="reservada">Reservada</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Cliente / Destino</label><input class="form-input" id="port-client" placeholder="Nome do cliente"></div>
+      <div class="form-group"><label class="form-label">Cor</label><div class="fiber-colors-grid" id="port-fiber-grid"></div></div>
+    </div>
+    <div class="modal-footer"><button class="btn-ghost" onclick="closeModal('modal-port')">Cancelar</button><button class="btn-primary" onclick="savePort()">Salvar</button></div>
+  </div>
+</div>
+
+<!-- PROJECTS MODAL -->
+<div class="modal-overlay" id="modal-projects">
+  <div class="modal-box" style="width:660px">
+    <div class="modal-head"><h2>Gerenciar Projetos</h2><button class="modal-close" onclick="closeModal('modal-projects')">Ã—</button></div>
+    <div class="modal-body">
+      <div id="project-list"></div>
+      <div class="new-project-form">
+        <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:10px;text-transform:uppercase;letter-spacing:1px">Novo Projeto</div>
+        <div class="form-row" style="grid-template-columns:1fr 1fr auto;gap:8px;align-items:end">
+          <div class="form-group" style="margin:0"><label class="form-label">Nome</label><input class="form-input" id="new-proj-name" placeholder="Ex: Rede Bairro Norte"></div>
+          <div class="form-group" style="margin:0"><label class="form-label">DescriÃ§Ã£o</label><input class="form-input" id="new-proj-desc" placeholder="Opcional"></div>
+          <button class="btn-primary" onclick="createProject()" style="align-self:end">+ Criar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-incident">
+  <div class="modal-box" style="width:560px">
+    <div class="modal-head"><h2 id="incident-modal-title">Novo Incidente</h2><button class="modal-close" onclick="closeModal('modal-incident')">Ã—</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="incident-id">
+      <div class="form-group"><label class="form-label">Titulo</label><input class="form-input" id="incident-title" placeholder="Ex: Cabo tronco com rompimento"></div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Status</label>
+          <select class="form-select" id="incident-status">
+            <option value="open">Aberto</option>
+            <option value="progress">Em andamento</option>
+            <option value="closed">Fechado</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Severidade</label>
+          <select class="form-select" id="incident-severity">
+            <option value="high">Alta</option>
+            <option value="medium">Media</option>
+            <option value="low">Baixa</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Categoria</label><input class="form-input" id="incident-category" value="rede"></div>
+        <div class="form-group"><label class="form-label">Responsavel</label><input class="form-input" id="incident-assigned" placeholder="Operacao/Tecnico"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Elemento relacionado</label>
+        <select class="form-select" id="incident-element"></select>
+      </div>
+      <div class="form-group"><label class="form-label">Notas</label><textarea class="form-textarea" id="incident-notes" placeholder="Descreva o problema, diagnostico e proxima acao"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-danger" id="incident-delete-btn" style="display:none" onclick="deleteIncidentUI()">Excluir</button>
+      <button class="btn-ghost" onclick="closeModal('modal-incident')">Cancelar</button>
+      <button class="btn-primary" onclick="saveIncident()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-order">
+  <div class="modal-box" style="width:560px">
+    <div class="modal-head"><h2 id="order-modal-title">Nova Ordem de Servico</h2><button class="modal-close" onclick="closeModal('modal-order')">Ã—</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="order-id">
+      <div class="form-group"><label class="form-label">Titulo</label><input class="form-input" id="order-title" placeholder="Ex: Atendimento no cliente"></div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Status</label>
+          <select class="form-select" id="order-status">
+            <option value="open">Aberta</option>
+            <option value="progress">Em andamento</option>
+            <option value="closed">Fechada</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Prioridade</label>
+          <select class="form-select" id="order-priority">
+            <option value="high">Alta</option>
+            <option value="medium">Media</option>
+            <option value="low">Baixa</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Responsavel</label><input class="form-input" id="order-assigned" placeholder="Tecnico/NOC"></div>
+        <div class="form-group"><label class="form-label">Agendamento</label><input class="form-input" id="order-scheduled" placeholder="2026-04-25 09:00"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Cliente</label><select class="form-select" id="order-customer"></select></div>
+        <div class="form-group"><label class="form-label">Elemento</label><select class="form-select" id="order-element"></select></div>
+      </div>
+      <div class="form-group"><label class="form-label">Incidente vinculado</label><select class="form-select" id="order-incident"></select></div>
+      <div class="form-group"><label class="form-label">Notas</label><textarea class="form-textarea" id="order-notes" placeholder="Diagnostico e atividades previstas"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-danger" id="order-delete-btn" style="display:none" onclick="deleteOrderUI()">Excluir</button>
+      <button class="btn-ghost" onclick="closeModal('modal-order')">Cancelar</button>
+      <button class="btn-primary" onclick="saveOrder()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- FUSION MAP MODAL (CEO) -->
+<div class="modal-overlay" id="modal-fusion">
+  <div class="modal-box" style="width:680px">
+    <div class="modal-head"><h2 id="fusion-title">Mapa de FusÃ£o</h2><button class="modal-close" onclick="closeModal('modal-fusion')">Ã—</button></div>
+    <div class="modal-body" id="fusion-body"></div>
+  </div>
+</div>
+
+<!-- USERS MODAL -->
+<div class="modal-overlay" id="modal-users">
+  <div class="modal-box" style="width:720px">
+    <div class="modal-head">
+      <h2>ðŸ‘¥ Gerenciar UsuÃ¡rios</h2>
+      <button class="modal-close" onclick="closeModal('modal-users')">Ã—</button>
+    </div>
+    <div class="modal-body" style="padding:0">
+      <!-- Add user form -->
+      <div style="padding:16px 20px;background:var(--surface2);border-bottom:1px solid var(--border)">
+        <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Novo UsuÃ¡rio</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 120px auto;gap:8px;align-items:end">
+          <div>
+            <label class="form-label">Username</label>
+            <input class="form-input" id="nu-username" placeholder="joao.tecnico" style="font-size:12px">
+          </div>
+          <div>
+            <label class="form-label">Nome completo</label>
+            <input class="form-input" id="nu-nome" placeholder="JoÃ£o da Silva" style="font-size:12px">
+          </div>
+          <div>
+            <label class="form-label">Senha</label>
+            <input class="form-input" id="nu-password" type="password" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" style="font-size:12px">
+          </div>
+          <div>
+            <label class="form-label">Perfil</label>
+            <select class="form-select" id="nu-role" style="font-size:12px">
+              <option value="viewer">Viewer</option>
+              <option value="editor">Editor</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <button class="btn-primary" onclick="createUserUI()" style="align-self:end;white-space:nowrap">+ Criar</button>
+        </div>
+      </div>
+      <!-- Users list -->
+      <div id="users-list" style="max-height:420px;overflow-y:auto"></div>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT USER MODAL -->
+<div class="modal-overlay" id="modal-edit-user">
+  <div class="modal-box" style="width:440px">
+    <div class="modal-head">
+      <h2>âœï¸ Editar UsuÃ¡rio</h2>
+      <button class="modal-close" onclick="closeModal('modal-edit-user')">Ã—</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="eu-username">
+      <div class="form-group">
+        <label class="form-label">Nome completo</label>
+        <input class="form-input" id="eu-nome">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Perfil de Acesso</label>
+        <select class="form-select" id="eu-role">
+          <option value="viewer">ðŸ‘ï¸ Viewer â€” somente leitura</option>
+          <option value="editor">âœï¸ Editor â€” pode editar elementos e cabos</option>
+          <option value="admin">ðŸ”‘ Admin â€” acesso total</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nova Senha <span style="color:var(--text3);font-weight:400">(deixe em branco para manter)</span></label>
+        <input class="form-input" id="eu-password" type="password" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Status</label>
+        <select class="form-select" id="eu-active">
+          <option value="1">âœ… Ativo</option>
+          <option value="0">ðŸš« Inativo</option>
+        </select>
+      </div>
+      <!-- Permissions summary -->
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:4px">
+        <div style="font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">PermissÃµes do Perfil Selecionado</div>
+        <div id="eu-perms-preview"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-edit-user')">Cancelar</button>
+      <button class="btn-primary" onclick="saveUserEdit()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- CTO PORTS MODAL -->
+<div class="modal-overlay" id="modal-cto-ports">
+  <div class="modal-box" style="width:700px">
+    <div class="modal-head"><h2 id="cto-ports-title">Portas CTO</h2><button class="modal-close" onclick="closeModal('modal-cto-ports')">Ã—</button></div>
+    <div class="modal-body" id="cto-ports-body"></div>
+  </div>
+</div>
+
+<!-- CTO ASSIGN CLIENT MODAL -->
+<div class="modal-overlay" id="modal-cto-assign">
+  <div class="modal-box" style="width:450px">
+    <div class="modal-head"><h2>Associar Cliente</h2><button class="modal-close" onclick="closeModal('modal-cto-assign')">Ã—</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="assign-cto-id">
+      <input type="hidden" id="assign-port-num">
+      <div class="form-group">
+        <label class="form-label">Selecionar Cliente/ONU</label>
+        <select class="form-select" id="assign-client-select"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">ObservaÃ§Ãµes</label>
+        <textarea class="form-textarea" id="assign-obs" rows="2"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-cto-assign')">Cancelar</button>
+      <button class="btn-primary" onclick="saveCtoPortAssignment()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL SPLITTER CTO -->
+<div class="modal-overlay" id="modal-cto-split">
+  <div class="modal-box" style="width:400px">
+    <div class="modal-head"><h2>ðŸ”€ Aplicar Splitter na Porta</h2><button class="modal-close" onclick="closeModal('modal-cto-split')">Ã—</button></div>
+    <div class="modal-body">
+      <p style="margin-bottom:16px;font-size:13px;color:var(--text2)">Escolha o tipo de splitter:</p>
+      <div style="display:flex;gap:12px;justify-content:center">
+        <button class="btn-primary" onclick="confirmSplitPort('1:2')" style="flex:1;padding:12px;font-size:16px;font-weight:700">1:2</button>
+        <button class="btn-primary" onclick="confirmSplitPort('1:4')" style="flex:1;padding:12px;font-size:16px;font-weight:700">1:4</button>
+      </div>
+      <div style="margin-top:16px;font-size:11px;color:var(--text3);text-align:center">
+        <span>1:2 â†’ 2 subportas</span><br>
+        <span>1:4 â†’ 4 subportas</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-trace">
+  <div class="modal-box" style="width:720px">
+    <div class="modal-head"><h2 id="trace-modal-title">Rota da Topologia</h2><button class="modal-close" onclick="closeModal('modal-trace')">Ã—</button></div>
+    <div class="modal-body">
+      <div class="validation-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:14px">
+        <div class="validation-card"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px">Hops</div><div style="font-size:26px;font-weight:800" id="trace-hop-count">0</div></div>
+        <div class="validation-card"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px">Metragem</div><div style="font-size:26px;font-weight:800" id="trace-total-length">0 m</div></div>
+        <div class="validation-card"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px">Segmentos rompidos</div><div style="font-size:26px;font-weight:800" id="trace-broken-count">0</div></div>
+      </div>
+      <div id="trace-path-list"></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"><span id="toast-msg"></span></div>
+
+<script src="/static/app-state.js"></script>
+<script src="/static/app-core.js"></script>
+<script src="/static/app-map.js"></script>
+<script src="/static/app-management.js"></script>
+<script src="/static/app-views.js"></script>
+<script src="/static/app-workflows.js"></script>
+<script src="/static/app-shell.js"></script>
+<script src="/static/app-auth.js"></script>
+</body>
+</html>
+
