@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # ISP NetMap Pro — Arquitetura Modular
 
 ## Como rodar
@@ -88,3 +89,7 @@ Pronto. Os outros módulos não precisam ser tocados.
 ## Dados
 
 Os dados ficam em `data/projects/<slug>.json`. Cada projeto é um arquivo JSON independente. Para migrar para banco de dados no futuro, basta reescrever apenas os `services/` — as rotas não mudam.
+=======
+# NetMap
+ISP NetMap
+>>>>>>> af1d081bd82cfb4abec2253fdf51b2c1a9456e75
