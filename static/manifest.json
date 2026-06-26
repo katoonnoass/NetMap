@@ -1,0 +1,9 @@
+{
+  "name": "ISP NetMap Pro",
+  "short_name": "NetMap",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f8fc",
+  "theme_color": "#1ea7d7",
+  "icons": [{"src": "/static/favicon.svg", "sizes": "any", "type": "image/svg+xml"}]
+}

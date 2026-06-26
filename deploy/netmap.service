@@ -1,0 +1,29 @@
+[Unit]
+Description=ISP NetMap Pro
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=joao
+Group=joao
+WorkingDirectory=/opt/NetMap
+EnvironmentFile=/opt/NetMap/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStartPre=/opt/NetMap/.venv/bin/python -c "from app import create_app; create_app()"
+ExecStart=/opt/NetMap/.venv/bin/gunicorn --bind 0.0.0.0:5005 --workers 3 --threads 2 --timeout 60 --graceful-timeout 30 --access-logfile - --error-logfile - "app:create_app()"
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=35
+KillSignal=SIGTERM
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/NetMap/data /opt/NetMap/backups
+
+[Install]
+WantedBy=multi-user.target
+

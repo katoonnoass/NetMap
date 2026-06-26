@@ -1,35 +1,57 @@
 ﻿// API
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
+let _csrfToken = '';
+let _modalStack = [];
+
+function esc(s){const d=document.createElement('div');d.textContent=String(s??'');return d.innerHTML;}
+
 async function api(method,path,body){
-  const opts={method,headers:{'Content-Type':'application/json'}};
-  if(body) opts.body=JSON.stringify(body);
+  const opts={method,headers:{}};
+  if(body){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(body);}
+  if(_csrfToken && method!=='GET' && method!=='HEAD') opts.headers['X-CSRFToken']=_csrfToken;
   try{
     const r=await fetch(path,opts);
-    if(r.status===401){window.location.href='/login';return null;}
-    if(r.status===403){const e=await r.json().catch(()=>({error:'Sem permissÃ£o'}));toast('ðŸ”’ '+e.error,'error');return null;}
-    if(!r.ok){const e=await r.json().catch(()=>({error:`HTTP ${r.status}`}));toast('âŒ '+e.error,'error');return null;}
-    return r.json();
-  }catch(e){toast('âŒ Erro de conexÃ£o','error');return null;}
+    if(r.status===401){toast('🔒 Sessão expirada. Redirecionando…','warn');setTimeout(()=>{window.location.href='/login';},2000);return null;}
+    if(r.status===403){const e=await r.json().catch(()=>({error:'Sem permissão'}));toast('🔒 '+e.error,'error');return null;}
+    if(!r.ok){const e=await r.json().catch(()=>({error:`HTTP ${r.status}`}));toast('❌ '+e.error,'error');return null;}
+    const data = await r.json();
+    if (data && typeof data === 'object' && !Array.isArray(data) && data.items !== undefined) {
+      return data.items;
+    }
+    return data;
+  }catch(e){toast('❌ Erro de conexão','error');return null;}
+}
+
+async function apiUpload(method,path,formData){
+  const opts={method,headers:{},credentials:'same-origin'};
+  if(_csrfToken && method!=='GET') opts.headers['X-CSRFToken']=_csrfToken;
+  opts.body=formData;
+  try{
+    const r=await fetch(path,opts);
+    if(r.status===401){toast('🔒 Sessão expirada. Redirecionando…','warn');setTimeout(()=>{window.location.href='/login';},2000);return null;}
+    if(r.status===403){const e=await r.json().catch(()=>({error:'Sem permissão'}));toast('🔒 '+e.error,'error');return null;}
+    if(!r.ok){const e=await r.json().catch(()=>({error:`HTTP ${r.status}`}));toast('❌ '+e.error,'error');return null;}
+    return await r.json();
+  }catch(e){toast('❌ Erro de conexão','error');return null;}
 }
 const papi=path=>`/api/projects/${currentProjectId}${path}`;
 
 async function loadAll(){
-  const [els,conns,dios,pos,incidents,serviceOrders,customers,cables]=await Promise.all([
+  const [els,conns,dios,pos,incidents,customers,cables]=await Promise.all([
     api('GET',papi('/elements')),api('GET',papi('/connections')),
     api('GET',papi('/dios')),api('GET',papi('/positions')),
     api('GET',papi('/incidents')),
-    api('GET',papi('/service-orders')),
     api('GET',papi('/customers')),
     api('GET',papi('/cables')),
   ]);
-  DB.elements=Array.isArray(els)?els:[];
-  DB.connections=Array.isArray(conns)?conns:[];
-  DB.dios=Array.isArray(dios)?dios:[];
+  DB.elements=Array.isArray(els)?els:(els?.items||[]);
+  DB.connections=Array.isArray(conns)?conns:(conns?.items||[]);
+  DB.dios=Array.isArray(dios)?dios:(dios?.items||[]);
   DB.positions=(pos&&typeof pos==='object'&&!Array.isArray(pos))?pos:{};
-  DB.incidents=Array.isArray(incidents)?incidents:[];
-  DB.service_orders=Array.isArray(serviceOrders)?serviceOrders:[];
-  DB.customers=Array.isArray(customers)?customers:[];
-  DB.cables=Array.isArray(cables?.cables)?cables.cables:[];
+  DB.incidents=Array.isArray(incidents)?incidents:(incidents?.items||[]);
+
+  DB.customers=Array.isArray(customers)?customers:(customers?.items||[]);
+  DB.cables=Array.isArray(cables?.cables)?cables.cables:(cables?.items||[]);
 }
 
 async function loadProjectInsights(){
@@ -39,8 +61,17 @@ async function loadProjectInsights(){
     api('GET', papi('/topology-health')),
   ]);
   dashboardSummary = summary && typeof summary === 'object' ? summary : null;
-  projectAudit = Array.isArray(audit) ? audit : [];
+  projectAudit = Array.isArray(audit) ? audit : (audit?.items || []);
   topologyHealth = health && typeof health === 'object' ? health : null;
+}
+
+function showProjectAlerts(){
+  const broken = (DB.connections||[]).filter(c => c.broken).length;
+  const openInc = (DB.incidents||[]).filter(i => i.status === 'open' || i.status === 'in_progress').length;
+  const parts = [];
+  if (broken) parts.push(`💔 ${broken} cabo(s) rompido(s)`);
+  if (openInc) parts.push(`🚨 ${openInc} incidente(s) aberto(s)`);
+  if (parts.length) toast('⚠️ Atenção: ' + parts.join(' · '), 'warn');
 }
 
 async function loadIxcConfig(){
@@ -53,8 +84,11 @@ function normalizeText(value){
 }
 
 function elementMatchesFilters(el){
-  if(activeFilter && el.tipo !== activeFilter) return false;
-  if(activeStatusFilter !== 'all' && el.status !== activeStatusFilter) return false;
+  if(showOnlyUnpositioned && el.lat && el.lng) return false;
+  if(!showOnlyUnpositioned){
+    if(activeFilter && el.tipo !== activeFilter) return false;
+    if(activeStatusFilter !== 'all' && el.status !== activeStatusFilter) return false;
+  }
   if(!globalSearchTerm) return true;
   const haystack = [
     el.nome, el.tipo, el.status, el.modelo, el.endereco, el.detalhes, el.id
@@ -63,6 +97,7 @@ function elementMatchesFilters(el){
 }
 
 function handleGlobalSearch(value){
+  showOnlyUnpositioned=false;
   globalSearchTerm = value || '';
   const topInput=document.getElementById('global-search-input');
   const sideInput=document.getElementById('sidebar-search');
@@ -72,9 +107,13 @@ function handleGlobalSearch(value){
   renderSidebar();
   renderTable();
   renderDashboard();
+  renderCables();
+  renderCustomers();
+  renderIncidents();
 }
 
 function setStatusFilter(value){
+  showOnlyUnpositioned=false;
   activeStatusFilter = value || 'all';
   applyVisibilityFilters();
   renderSidebar();
@@ -93,17 +132,58 @@ function applyVisibilityFilters(){
   });
 }
 
+function focusUnpositionedElements(){
+  activeFilter=null;
+  activeStatusFilter='all';
+  showOnlyUnpositioned=true;
+  switchTab('geomap');
+  updateStats();renderSidebar();renderTable();
+  const count=DB.elements.filter(e=>!(e.lat&&e.lng)).length;
+  toast(`${count} elemento(s) sem coordenadas. Use o filtro da barra lateral para navegar.`,'success');
+}
+
+function goToOfflineElements(){
+  showOnlyUnpositioned=false;
+  activeFilter=null;
+  setStatusFilter('offline');
+  switchTab('geomap');
+}
+
+function goToSaturatedCTOs(){
+  showOnlyUnpositioned=false;
+  activeStatusFilter='all';
+  setFilter('cto');
+  switchTab('geomap');
+}
+
+async function fetchCsrfToken(){
+  const meta = document.querySelector('meta[name="csrf-token"]');
+  if(meta && meta.content){_csrfToken=meta.content;return;}
+  try{
+    const r=await fetch('/api/auth/csrf-token',{credentials:'same-origin'});
+    const d=await r.json();
+    if(d.csrf_token) _csrfToken=d.csrf_token;
+  }catch(e){}
+}
+
 registerPublicApi('core', {
   api,
+  apiUpload,
   papi,
+  esc,
   loadAll,
   loadProjectInsights,
+  showProjectAlerts,
   loadIxcConfig,
   normalizeText,
   elementMatchesFilters,
   handleGlobalSearch,
   setStatusFilter,
   applyVisibilityFilters,
+  focusUnpositionedElements,
+  goToOfflineElements,
+  goToSaturatedCTOs,
+  fetchCsrfToken,
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════

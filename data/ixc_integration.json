@@ -1,7 +1,7 @@
 {
   "enabled": false,
-  "base_url": "",
-  "token": "123:abc",
+  "base_url": "https://test.ixc.com/webservice/v1",
+  "token": "test123",
   "self_signed": true,
   "auth_mode": "auto",
   "timeout_seconds": 15,

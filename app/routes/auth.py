@@ -1,11 +1,23 @@
 """
 Rotas de autenticacao: login, logout e sessao atual.
 """
-from flask import Blueprint, current_app, jsonify, redirect, render_template, request, session, url_for
 
+from flask import (
+    Blueprint,
+    current_app,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
+
+from .. import limiter
 from ..services import audit_service
-from ..services.user_service import authenticate, ensure_admin
+from ..services.user_service import authenticate, change_password, ensure_admin
 from ..utils.auth import current_user, require_login
+
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -17,7 +29,15 @@ def login_page():
     return render_template("login.html")
 
 
+@auth_bp.route("/api/auth/csrf-token")
+def get_csrf_token():
+    from flask_wtf.csrf import generate_csrf
+    token = generate_csrf()
+    return jsonify({"csrf_token": token})
+
+
 @auth_bp.route("/api/auth/login", methods=["POST"])
+@limiter.limit("10 per minute")
 def do_login():
     ensure_admin()
     data = request.get_json(silent=True) or {}
@@ -29,11 +49,20 @@ def do_login():
 
     user = authenticate(username, password)
     if not user:
+        audit_service.log_event(
+            None,
+            action="login_failed",
+            username=username,
+            entity_type="session",
+            entity_id=username,
+            message=f'Tentativa de login falha para "{username}"',
+        )
         return jsonify({"error": "Usuario ou senha invalidos"}), 401
 
     session.clear()
-    session["user"] = username
     session.permanent = True
+    session["user"] = username
+    session["_sid"] = __import__("secrets").token_hex(16)
     audit_service.log_event(
         None,
         action="login",
@@ -45,14 +74,16 @@ def do_login():
 
     role = user.get("role", "viewer")
     permissions = current_app.config["PERMISSIONS"]
-    return jsonify({
-        "ok": True,
-        "username": username,
-        "nome": user.get("nome", username),
-        "role": role,
-        "permissions": permissions.get(role, {}),
-        "password_needs_rotation": user.get("password_needs_rotation", False),
-    })
+    return jsonify(
+        {
+            "ok": True,
+            "username": username,
+            "nome": user.get("nome", username),
+            "role": role,
+            "permissions": permissions.get(role, {}),
+            "password_needs_rotation": user.get("password_needs_rotation", False),
+        }
+    )
 
 
 @auth_bp.route("/api/auth/logout", methods=["POST"])
@@ -67,10 +98,38 @@ def me():
     user = current_user()
     role = user.get("role", "viewer")
     permissions = current_app.config["PERMISSIONS"]
-    return jsonify({
-        "username": session["user"],
-        "nome": user.get("nome", session["user"]),
-        "role": role,
-        "permissions": permissions.get(role, {}),
-        "password_needs_rotation": user.get("password_needs_rotation", False),
-    })
+    return jsonify(
+        {
+            "username": session["user"],
+            "nome": user.get("nome", session["user"]),
+            "role": role,
+            "permissions": permissions.get(role, {}),
+            "password_needs_rotation": user.get("password_needs_rotation", False),
+        }
+    )
+
+
+@auth_bp.route("/api/auth/change-password", methods=["POST"])
+@require_login
+@limiter.limit("5 per minute")
+def change_own_password():
+    data = request.get_json(silent=True) or {}
+    current_password = str(data.get("current_password", ""))
+    new_password = str(data.get("new_password", ""))
+    username = session["user"]
+    try:
+        change_password(username, current_password, new_password)
+    except LookupError as exc:
+        return jsonify({"error": str(exc)}), 404
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    audit_service.log_event(
+        None,
+        action="password_changed",
+        username=username,
+        entity_type="user",
+        entity_id=username,
+        message=f'Senha alterada por "{username}"',
+    )
+    session.clear()
+    return jsonify({"ok": True, "reauthenticate": True})

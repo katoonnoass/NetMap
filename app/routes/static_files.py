@@ -11,7 +11,11 @@ static_bp = Blueprint("static_files", __name__)
 @static_bp.after_request
 def add_cache(response):
     if request.path.startswith("/static/"):
-        response.headers["Cache-Control"] = "public, max-age=604800"
+        response.headers["Cache-Control"] = (
+            "public, max-age=31536000, immutable"
+            if request.args.get("v")
+            else "public, max-age=3600"
+        )
     return response
 
 
@@ -26,10 +30,8 @@ def serve_vis():
             data = gzip.compress(f.read(), compresslevel=6)
         resp = current_app.response_class(data, mimetype="application/javascript")
         resp.headers["Content-Encoding"] = "gzip"
-        resp.headers["Cache-Control"] = "public, max-age=604800"
         resp.headers["Vary"] = "Accept-Encoding"
         return resp
 
     resp = send_file(path, mimetype="application/javascript")
-    resp.headers["Cache-Control"] = "public, max-age=604800"
     return resp

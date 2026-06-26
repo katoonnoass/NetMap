@@ -1,12 +1,23 @@
 """
 Rotas de projetos.
 """
+
+import html as _html
 import io
 
-from flask import Blueprint, jsonify, render_template, request, send_file, session
+from flask import Blueprint, jsonify, render_template, render_template_string, request, send_file, session
 
+from .. import limiter
 from ..services import audit_service, geodata_service, project_service
 from ..utils.auth import require_login, require_perm
+from ..utils.query import (
+    parse_pagination,
+    parse_sorting,
+    parse_search,
+    apply_search,
+    apply_sorting,
+    paginate,
+)
 
 projects_bp = Blueprint("projects", __name__)
 
@@ -22,15 +33,30 @@ def index():
 @require_login
 def get_projects():
     project_service.ensure_demo()
-    return jsonify(project_service.list_projects())
+    items = project_service.list_projects()
+
+    # Apply search, sorting
+    search = parse_search()
+    sort, order = parse_sorting(["name", "id", "created_at"])
+
+    if search:
+        items = apply_search(items, search, ["name", "id"])
+    items = apply_sorting(items, sort, order)
+
+    # Paginate
+    p = parse_pagination()
+    items, meta = paginate(items, p)
+
+    return jsonify({"items": items, **meta})
 
 
 @projects_bp.route("/api/projects", methods=["POST"])
+@limiter.limit("10 per minute")
 @require_perm("manage_projects")
 def create_project():
     data = request.get_json(silent=True) or {}
     result = project_service.create_project(
-        name=str(data.get("name", "Novo Projeto")).strip(),
+        name=str(data.get("name", "Projetos")).strip(),
         description=str(data.get("description", "")).strip(),
     )
     audit_service.log_event(
@@ -45,10 +71,13 @@ def create_project():
 
 
 @projects_bp.route("/api/projects/<pid>", methods=["PUT"])
+@limiter.limit("15 per minute")
 @require_perm("manage_projects")
 def update_project(pid):
     try:
-        result = project_service.update_project_meta(pid, request.get_json(silent=True) or {})
+        result = project_service.update_project_meta(
+            pid, request.get_json(silent=True) or {}
+        )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     if not result:
@@ -65,6 +94,7 @@ def update_project(pid):
 
 
 @projects_bp.route("/api/projects/<pid>", methods=["DELETE"])
+@limiter.limit("5 per minute")
 @require_perm("manage_projects")
 def delete_project(pid):
     project_service.delete_project(pid)
@@ -80,6 +110,7 @@ def delete_project(pid):
 
 
 @projects_bp.route("/api/projects/<pid>/duplicate", methods=["POST"])
+@limiter.limit("5 per minute")
 @require_perm("manage_projects")
 def duplicate_project(pid):
     result = project_service.duplicate_project(pid)
@@ -103,15 +134,16 @@ def get_all(pid):
     db = project_service.load_project(pid)
     if not db:
         return jsonify({"error": "Not found"}), 404
-    return jsonify({
-        "elements": db.get("elements", []),
-        "connections": db.get("connections", []),
-        "dios": db.get("dios", []),
-        "positions": db.get("positions", {}),
-        "cto_ports": db.get("cto_ports", {}),
-        "incidents": db.get("incidents", []),
-        "service_orders": db.get("service_orders", []),
-    })
+    return jsonify(
+        {
+            "elements": db.get("elements", []),
+            "connections": db.get("connections", []),
+            "dios": db.get("dios", []),
+            "positions": db.get("positions", {}),
+            "cto_ports": db.get("cto_ports", {}),
+            "incidents": db.get("incidents", []),
+        }
+    )
 
 
 @projects_bp.route("/api/projects/<pid>/export")
@@ -120,16 +152,17 @@ def export_project(pid):
     db = project_service.load_project(pid)
     if not db:
         return jsonify({"error": "Not found"}), 404
-    return jsonify({
-        "projeto": db.get("name"),
-        "criado_em": db.get("created_at"),
-        "elementos": db.get("elements", []),
-        "conexoes": db.get("connections", []),
-        "dios": db.get("dios", []),
-        "cto_ports": db.get("cto_ports", {}),
-        "incidentes": db.get("incidents", []),
-        "ordens_servico": db.get("service_orders", []),
-    })
+    return jsonify(
+        {
+            "projeto": db.get("name"),
+            "criado_em": db.get("created_at"),
+            "elementos": db.get("elements", []),
+            "conexoes": db.get("connections", []),
+            "dios": db.get("dios", []),
+            "cto_ports": db.get("cto_ports", {}),
+            "incidentes": db.get("incidents", []),
+        }
+    )
 
 
 @projects_bp.route("/api/projects/<pid>/export/kml")
@@ -163,13 +196,16 @@ def export_project_kmz(pid):
 
 
 @projects_bp.route("/api/projects/<pid>/import-geodata", methods=["POST"])
+@limiter.limit("5 per minute")
 @require_perm("edit_elements")
 def import_project_geodata(pid):
     upload = request.files.get("file")
     if upload is None or not upload.filename:
         return jsonify({"error": "Selecione um arquivo KML ou KMZ"}), 400
     try:
-        result = geodata_service.import_project_geodata(pid, upload.filename, upload.read())
+        result = geodata_service.import_project_geodata(
+            pid, upload.filename, upload.read()
+        )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     if result is None:
@@ -190,3 +226,189 @@ def import_project_geodata(pid):
         },
     )
     return jsonify(result), 201
+
+
+@projects_bp.route("/api/projects/<pid>/import-json", methods=["POST"])
+@limiter.limit("5 per minute")
+@require_perm("edit_elements")
+def import_project_json(pid):
+    upload = request.files.get("file")
+    if upload is None or not upload.filename:
+        return jsonify({"error": "Selecione um arquivo JSON"}), 400
+    import json as _json
+
+    try:
+        raw = upload.read()
+        data = _json.loads(raw)
+    except (UnicodeDecodeError, _json.JSONDecodeError) as exc:
+        return jsonify({"error": f"JSON invalido: {exc}"}), 400
+    if not isinstance(data, dict):
+        return jsonify({"error": "JSON deve ser um objeto com elementos, conexoes etc."}), 400
+
+    db = project_service.load_project(pid)
+    if not db:
+        return jsonify({"error": "Not found"}), 404
+
+    mode = request.form.get("mode", "merge").strip().lower()
+    if mode == "replace":
+        db["elements"] = data.get("elementos", data.get("elements", []))
+        db["connections"] = data.get("conexoes", data.get("connections", []))
+        db["dios"] = data.get("dios", [])
+        db["cto_ports"] = data.get("cto_ports", {})
+        db["incidents"] = data.get("incidentes", data.get("incidents", []))
+    else:
+        existing_ids = {e["id"] for e in db.get("elements", [])}
+        max_id = db.get("_nextId", 1)
+        for el in data.get("elementos", data.get("elements", [])):
+            if not isinstance(el, dict):
+                continue
+            if el.get("id") in existing_ids:
+                el["id"] = max_id
+            max_id = max(max_id, el.get("id", 0) + 1)
+            db["elements"].append(el)
+        conn_ids = {c["id"] for c in db.get("connections", [])}
+        for conn in data.get("conexoes", data.get("connections", [])):
+            if not isinstance(conn, dict):
+                continue
+            if conn.get("id") in conn_ids:
+                conn["id"] = max_id
+            max_id = max(max_id, conn.get("id", 0) + 1)
+            db["connections"].append(conn)
+        for dio in data.get("dios", []):
+            if isinstance(dio, dict):
+                db.setdefault("dios", []).append(dio)
+        for k, v in data.get("cto_ports", {}).items():
+            if isinstance(v, list):
+                db.setdefault("cto_ports", {})[k] = v
+        for inc in data.get("incidentes", data.get("incidents", [])):
+            if isinstance(inc, dict):
+                db.setdefault("incidents", []).append(inc)
+        db["_nextId"] = max_id
+
+    project_service.save_project(pid, db)
+    audit_service.log_event(
+        pid,
+        action="project_json_imported",
+        username=session.get("user", "system"),
+        entity_type="project",
+        entity_id=pid,
+        message=f'Importacao JSON de "{upload.filename}" concluida (modo={mode})',
+        extra={"file_name": upload.filename, "mode": mode},
+    )
+    return jsonify({"ok": True, "mode": mode}), 201
+
+
+@projects_bp.route("/api/projects/<pid>/report")
+@require_login
+def project_report(pid):
+    from datetime import datetime
+    from ..services import summary_service, network_service, incident_service
+
+    db = project_service.load_project(pid)
+    if not db:
+        return jsonify({"error": "Not found"}), 404
+
+    elements = db.get("elements", [])
+    connections = db.get("connections", [])
+    incidents = incident_service.list_incidents(db)
+
+    type_counts = {}
+    status_counts = {"ativo": 0, "alerta": 0, "offline": 0}
+    for el in elements:
+        t = el.get("tipo", "outro")
+        s = el.get("status", "ativo")
+        type_counts[t] = type_counts.get(t, 0) + 1
+        status_counts[s] = status_counts.get(s, 0) + 1
+
+    cables_total = len(connections)
+    cables_broken = sum(1 for c in connections if c.get("broken"))
+
+    open_incidents = [i for i in incidents if i.get("status") != "closed"]
+
+    esc = _html.escape
+
+    type_rows = "\n".join(
+        f"<tr><td>{esc(t)}</td><td>{esc(str(n))}</td></tr>"
+        for t, n in sorted(type_counts.items())
+    )
+    status_rows = "\n".join(
+        f"<tr><td>{esc(s)}</td><td>{esc(str(n))}</td></tr>"
+        for s, n in status_counts.items()
+    )
+    cable_rows = "\n".join(
+        f"<tr><td>{esc(str(c.get('id', '')))}</td><td>{esc(str(c.get('fibra', '')))}</td><td>{esc(str(c.get('from_name', '')))}</td><td>{esc(str(c.get('to_name', '')))}</td><td>{esc(str(c.get('length', '-')))}</td><td>{'Rompido' if c.get('broken') else 'Integro'}</td></tr>"
+        for c in connections[:50]
+    )
+    if open_incidents:
+        incident_rows = (
+            "<table><tr><th>Titulo</th><th>Severidade</th><th>Responsavel</th></tr>\n"
+            + "\n".join(
+                f"<tr><td>{esc(str(i.get('title', '')))}</td><td>{esc(str(i.get('severity', '')))}</td><td>{esc(str(i.get('assigned_to', '-')))}</td></tr>"
+                for i in open_incidents
+            )
+            + "</table>"
+        )
+    else:
+        incident_rows = "<p>Nenhum incidente aberto.</p>"
+
+    tmpl = """<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8"><title>Relatorio — {{ name }}</title>
+<style>
+body{font-family:sans-serif;max-width:900px;margin:0 auto;padding:20px;color:#1a1a2e}
+h1{border-bottom:2px solid #1A73E8;padding-bottom:8px;font-size:22px}
+h2{font-size:16px;margin-top:24px;color:#1A73E8}
+table{width:100%;border-collapse:collapse;margin:8px 0;font-size:12px}
+th,td{border:1px solid #e0e0e0;padding:6px 8px;text-align:left}
+th{background:#f5f7fa}
+.stat-grid{display:flex;gap:16px;flex-wrap:wrap;margin:12px 0}
+.stat-card{flex:1;min-width:110px;border:1px solid #e0e0e0;border-radius:8px;padding:12px;text-align:center}
+.stat-card .num{font-size:26px;font-weight:700;color:#1A73E8}
+.stat-card .label{font-size:11px;color:#666;margin-top:4px}
+.footer{margin-top:32px;font-size:10px;color:#999;text-align:center;border-top:1px solid #e0e0e0;padding-top:12px}
+@media print{body{padding:0}.stat-card{border-color:#ccc}}
+</style></head><body>
+<h1>Relatorio: {{ name }}</h1>
+<p style="color:#666;font-size:12px">Gerado em {{ date }}</p>
+
+<h2>Resumo</h2>
+<div class="stat-grid">
+<div class="stat-card"><div class="num">{{ total_elements }}</div><div class="label">Elementos</div></div>
+<div class="stat-card"><div class="num">{{ total_connections }}</div><div class="label">Conexoes</div></div>
+<div class="stat-card"><div class="num">{{ total_clients }}</div><div class="label">Clientes</div></div>
+<div class="stat-card"><div class="num">{{ total_incidents }}</div><div class="label">Incidentes</div></div>
+</div>
+
+<h2>Elementos por Tipo</h2>
+<table><tr><th>Tipo</th><th>Quantidade</th></tr>
+{{ type_rows|safe }}</table>
+
+<h2>Status da Rede</h2>
+<table><tr><th>Status</th><th>Quantidade</th></tr>
+{{ status_rows|safe }}</table>
+
+<h2>Cabos</h2>
+<p style="font-size:12px;color:#666">Total: {{ cable_total }} cabos | Rompidos: {{ cable_broken }}</p>
+<table><tr><th>ID</th><th>Fibra</th><th>Origem</th><th>Destino</th><th>Metragem</th><th>Status</th></tr>
+{{ cable_rows|safe }}</table>
+
+<h2>Incidentes Abertos</h2>
+{{ incident_rows|safe }}
+
+<div class="footer">NetMap Pro — Relatorio automatico</div>
+</body></html>"""
+
+    return render_template_string(
+        tmpl,
+        name=db.get("name", pid),
+        date=datetime.now().strftime("%d/%m/%Y %H:%M"),
+        total_elements=str(len(elements)),
+        total_connections=str(len(connections)),
+        total_clients=str(type_counts.get("cliente", 0)),
+        total_incidents=str(len(open_incidents)),
+        type_rows=type_rows,
+        status_rows=status_rows,
+        cable_total=str(cables_total),
+        cable_broken=str(cables_broken),
+        cable_rows=cable_rows,
+        incident_rows=incident_rows,
+    )

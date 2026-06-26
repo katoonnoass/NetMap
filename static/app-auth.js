@@ -1,17 +1,19 @@
-﻿// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+﻿// ═══════════════════════════════════════════════════════
 async function loadSession(){
   try{
     const me = await api('GET','/api/auth/me');
-    if(!me) { window.location.href='/login'; return false; }
-    currentSession = me;
-    applyPermissionsToUI();
-    renderUserChip();
-    if(me.password_needs_rotation){
-      toast('ðŸ” Altere a senha padrÃ£o do administrador assim que possÃ­vel','error');
+    if(me && me.username){
+      currentSession = me;
+      applyPermissionsToUI();
+      renderUserChip();
+      if(me.password_needs_rotation){
+        setTimeout(()=>openPasswordModal(true),150);
+      }
+      return true;
     }
-    return true;
+    return false;
   } catch(e){
-    window.location.href='/login'; return false;
+    return false;
   }
 }
 
@@ -34,15 +36,16 @@ function renderUserChip(){
 
 function applyPermissionsToUI(){
   const p = currentSession.permissions;
-  // Hide edit buttons if no permission
   const readOnly = !p.edit_elements;
   const ixcTab = document.getElementById('tab-ixc');
-  document.getElementById('btn-cable').style.display = p.edit_cables ? '' : 'none';
-  document.querySelector('[onclick="openAddModal()"]').style.display = p.edit_elements ? '' : 'none';
+  const btnCable = document.getElementById('btn-cable');
+  const btnAdd = document.querySelector('[onclick="openAddModal()"]');
+  if(btnCable) btnCable.style.display = p.edit_cables ? '' : 'none';
+  if(btnAdd) btnAdd.style.display = p.edit_elements ? '' : 'none';
   if(ixcTab) ixcTab.style.display = p.manage_users ? '' : 'none';
-  document.getElementById('module-ixc').style.display = p.manage_users ? '' : 'none';
   if(readOnly){
-    document.getElementById('readonly-hint').classList.add('show');
+    const hint = document.getElementById('readonly-hint');
+    if(hint) hint.classList.add('show');
   }
 }
 
@@ -64,13 +67,39 @@ document.addEventListener('click', ()=>{
 });
 
 async function doLogout(){
-  await fetch('/api/auth/logout',{method:'POST'});
+  const headers = {'Content-Type':'application/json'};
+  if(_csrfToken) headers['X-CSRFToken']=_csrfToken;
+  await fetch('/api/auth/logout',{method:'POST',headers,credentials:'same-origin'});
   window.location.href='/login';
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+function openPasswordModal(required=false){
+  document.getElementById('user-dropdown')?.classList.remove('open');
+  document.getElementById('change-current-password').value='';
+  document.getElementById('change-new-password').value='';
+  document.getElementById('change-confirm-password').value='';
+  document.getElementById('change-password-close').style.display=required?'none':'';
+  document.getElementById('change-password-cancel').style.display=required?'none':'';
+  openModal('modal-change-password');
+  setTimeout(()=>document.getElementById('change-current-password').focus(),50);
+}
+
+async function changeOwnPassword(){
+  const current_password=document.getElementById('change-current-password').value;
+  const new_password=document.getElementById('change-new-password').value;
+  const confirmation=document.getElementById('change-confirm-password').value;
+  if(!current_password){toast('Informe a senha atual','error');return;}
+  if(new_password.length<12){toast('A nova senha precisa ter pelo menos 12 caracteres','error');return;}
+  if(new_password!==confirmation){toast('A confirmação da senha não confere','error');return;}
+  const result=await api('POST','/api/auth/change-password',{current_password,new_password});
+  if(!result) return;
+  toast('Senha atualizada. Entre novamente.','success');
+  setTimeout(()=>{window.location.href='/login';},700);
+}
+
+// ═══════════════════════════════════════════════════════
 // USER MANAGEMENT
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
 async function openUsersModal(){
   document.getElementById('user-dropdown').classList.remove('open');
   await renderUsersList();
@@ -82,7 +111,7 @@ async function renderUsersList(){
   if(!users) return;
   const container = document.getElementById('users-list');
   if(!users.length){
-    container.innerHTML='<div style="padding:20px;color:var(--text3);text-align:center">Nenhum usuÃ¡rio.</div>';
+    container.innerHTML='<div style="padding:20px;color:var(--text3);text-align:center">Nenhum usuário.</div>';
     return;
   }
   const roleColors = ROLE_COLORS;
@@ -93,13 +122,13 @@ async function renderUsersList(){
     return `<div class="user-row ${!u.active?'inactive-overlay':''}">
       <div class="user-row-avatar" style="background:${color}22;color:${color}">${initials}</div>
       <div class="user-row-info">
-        <div class="user-row-name">${u.nome||u.username} ${isSelf?'<span style="font-size:9px;color:var(--accent);font-weight:400">(vocÃª)</span>':''}</div>
-        <div class="user-row-meta">@${u.username} Â· criado ${u.created_at||'â€”'}</div>
+        <div class="user-row-name">${u.nome||u.username} ${isSelf?'<span style="font-size:9px;color:var(--accent);font-weight:400">(você)</span>':''}</div>
+        <div class="user-row-meta">@${u.username} · criado ${u.created_at||'—'}</div>
       </div>
       <span class="role-badge role-${u.role}" style="margin-right:6px">${ROLE_LABELS[u.role]||u.role}</span>
       <span style="font-size:10px;padding:2px 8px;border-radius:10px;margin-right:8px;font-weight:700;${u.active?'color:var(--green);background:rgba(0,230,118,.1)':'color:var(--red);background:rgba(255,61,87,.1)'}">${u.active?'Ativo':'Inativo'}</span>
-      <button class="btn-ghost" style="padding:4px 9px;font-size:11px;margin-right:4px" onclick="openEditUser('${u.username}')">âœï¸ Editar</button>
-      ${!isSelf?`<button class="btn-danger" style="padding:4px 9px;font-size:11px" onclick="deleteUserUI('${u.username}','${u.nome||u.username}')">ðŸ—‘ï¸</button>`:''}
+      <button class="btn-ghost" style="padding:4px 9px;font-size:11px;margin-right:4px" onclick="openEditUser('${u.username}')">✏️ Editar</button>
+      ${!isSelf?`<button class="btn-danger" style="padding:4px 9px;font-size:11px" onclick="deleteUserUI('${u.username}','${u.nome||u.username}')">🗑️</button>`:''}
     </div>`;
   }).join('');
 }
@@ -109,7 +138,7 @@ async function createUserUI(){
   const nome     = document.getElementById('nu-nome').value.trim();
   const password = document.getElementById('nu-password').value;
   const role     = document.getElementById('nu-role').value;
-  if(!username||!password){toast('âš ï¸ Preencha username e senha','error');return;}
+  if(!username||!password){toast('⚠️ Preencha username e senha','error');return;}
   const res = await api('POST','/api/users',{username,nome,password,role});
   if(!res){return;}
   document.getElementById('nu-username').value='';
@@ -117,7 +146,7 @@ async function createUserUI(){
   document.getElementById('nu-password').value='';
   document.getElementById('nu-role').value='viewer';
   await renderUsersList();
-  toast('âœ… UsuÃ¡rio criado!','success');
+  toast('✅ Usuário criado!','success');
 }
 
 function openEditUser(username){
@@ -144,7 +173,7 @@ const PERMS_BY_ROLE = {
 function updatePermsPreview(role){
   const has = PERMS_BY_ROLE[role]||[];
   document.getElementById('eu-perms-preview').innerHTML =
-    PERMS_ALL.map(p=>`<span class="perm-chip ${has.includes(p)?'perm-on':'perm-off'}">${has.includes(p)?'âœ“':'âœ—'} ${PERM_LABELS[p]||p}</span>`).join('');
+    PERMS_ALL.map(p=>`<span class="perm-chip ${has.includes(p)?'perm-on':'perm-off'}">${has.includes(p)?'✓':'✗'} ${PERM_LABELS[p]||p}</span>`).join('');
 }
 
 async function saveUserEdit(){
@@ -160,15 +189,15 @@ async function saveUserEdit(){
   if(!res) return;
   closeModal('modal-edit-user');
   await renderUsersList();
-  toast('ðŸ’¾ UsuÃ¡rio atualizado!','success');
+  toast('💾 Usuário atualizado!','success');
 }
 
 async function deleteUserUI(username, nome){
-  if(!confirm(`Excluir usuÃ¡rio "${nome}" (@${username})? Esta aÃ§Ã£o nÃ£o pode ser desfeita.`)) return;
+  if(!confirm(`Excluir usuário "${nome}" (@${username})? Esta ação não pode ser desfeita.`)) return;
   const res = await api('DELETE',`/api/users/${username}`);
   if(!res) return;
   await renderUsersList();
-  toast('ðŸ—‘ï¸ UsuÃ¡rio excluÃ­do','success');
+  toast('🗑️ Usuário excluído','success');
 }
 
 registerPublicApi('auth', {
@@ -178,6 +207,8 @@ registerPublicApi('auth', {
   canDo,
   toggleUserDropdown,
   doLogout,
+  openPasswordModal,
+  changeOwnPassword,
   openUsersModal,
   renderUsersList,
   createUserUI,
@@ -188,29 +219,45 @@ registerPublicApi('auth', {
 }, [
   'createUserUI',
   'doLogout',
+  'openPasswordModal',
+  'changeOwnPassword',
   'openUsersModal',
   'saveUserEdit',
   'toggleUserDropdown',
 ]);
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
 // INIT
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded',async()=>{
+  if(window.matchMedia('(max-width: 768px)').matches){
+    document.getElementById('sidebar')?.classList.add('collapsed');
+  }
+  await fetchCsrfToken();
   const ok = await loadSession();
   if(!ok) return;
   const projects=await api('GET','/api/projects');
-  if(!projects?.length){toast('âŒ Nenhum projeto','error');return;}
+  if(!projects?.length){toast('❌ Nenhum projeto','error');return;}
   currentProjectId=projects[0].id;
   document.getElementById('topbar-project-name').textContent=projects[0].name;
   await loadAll();
   await loadProjectInsights();
+  showProjectAlerts();
   await loadIxcConfig();
   initGeoMap();
   refreshAllMarkers();
   refreshAllCables();
-  updateStats();renderSidebar();renderTable();renderDioPanels();renderCustomers();renderIncidents();renderOrders();renderCables();renderValidation();renderReports();renderIxcSettings();
+  updateStats();renderSidebar();renderTable();renderDioPanels();renderCustomers();renderIncidents();renderCables();renderValidation();renderReports();renderIxcSettings();
   preloadNodeIcons();
   setMapMode('select');
+
+  // Apply URL hash routing
+  const hashTab = getRouteFromHash();
+  switchTab(hashTab);
 });
 
+// Listen for hash changes for back/forward navigation
+window.addEventListener('hashchange', () => {
+  const tab = getRouteFromHash();
+  switchTab(tab);
+});

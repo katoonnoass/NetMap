@@ -1,29 +1,38 @@
-﻿// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+﻿// ═══════════════════════════════════════════════════════
 function renderIncidents(){
   const q=(document.getElementById('incident-search')?.value||'').toLowerCase();
+  const statusFilter=document.getElementById('incident-filter-status')?.value||'all';
+  const severityFilter=document.getElementById('incident-filter-severity')?.value||'all';
   const rows=DB.incidents.filter(incident=>{
     const haystack=[incident.title,incident.status,incident.severity,incident.category,incident.assigned_to,incident.notes]
       .map(v=>String(v||'').toLowerCase()).join(' ');
-    return !q || haystack.includes(q);
+    const matchesSearch=!q || haystack.includes(q);
+    const matchesStatus=statusFilter==='all' || incident.status===statusFilter;
+    const matchesSeverity=severityFilter==='all' || incident.severity===severityFilter;
+    return matchesSearch && matchesStatus && matchesSeverity;
   });
-  document.getElementById('incident-list').innerHTML = rows.length ? rows.map(incident=>{
+  const visible=rows.slice(0,_incidentsShown);
+  document.getElementById('incident-list').innerHTML = visible.length ? visible.map(incident=>{
     const element=DB.elements.find(el=>String(el.id)===String(incident.element_id));
     return `<div class="incident-card">
-      <div class="list-title">${incident.title}</div>
-      <div class="list-meta">${incident.created_at || 'sem data'} ${incident.assigned_to ? `Â· ${incident.assigned_to}` : ''}</div>
+      <div class="list-title">${esc(incident.title)}</div>
+      <div class="list-meta">${esc(incident.created_at || 'sem data')} ${incident.assigned_to ? `· ${esc(incident.assigned_to)}` : ''}</div>
       <div class="incident-meta">
-        <span class="incident-badge status-${incident.status}">${incident.status}</span>
-        <span class="incident-badge severity-${incident.severity}">${incident.severity}</span>
-        <span class="incident-badge">${incident.category || 'geral'}</span>
+        <span class="incident-badge status-${incident.status}">${esc(incident.status)}</span>
+        <span class="incident-badge severity-${incident.severity}">${esc(incident.severity)}</span>
+        <span class="incident-badge">${esc(incident.category || 'geral')}</span>
       </div>
-      <div class="list-meta">${element ? `Elemento: ${element.nome}` : 'Sem elemento vinculado'}</div>
-      <div style="margin-top:8px;font-size:12px;color:var(--text2)">${incident.notes || 'Sem observacoes.'}</div>
+      <div class="list-meta">${element ? `Elemento: ${esc(element.nome)}` : 'Sem elemento vinculado'}</div>
+      <div style="margin-top:8px;font-size:12px;color:var(--text2)">${esc(incident.notes || 'Sem observações.')}</div>
       <div class="incident-actions">
         <button class="btn-ghost" onclick="openIncidentModal(${incident.id})">Editar</button>
         <button class="btn-warn" onclick="focusIncidentElement(${incident.element_id || 0})">Ir para elemento</button>
       </div>
     </div>`;
   }).join('') : '<div class="muted-empty">Nenhum incidente encontrado.</div>';
+  if(rows.length>_incidentsShown){
+    document.getElementById('incident-list').insertAdjacentHTML('beforeend',`<div style="text-align:center;margin-top:12px"><span style="font-size:10px;color:var(--text3)">Exibindo ${visible.length} de ${rows.length}</span><br><button class="btn-ghost" style="margin-top:6px" onclick="this.disabled=true;this.textContent='Carregando…';_incidentsShown+=${_PAGE_SIZE};renderIncidents()">Carregar mais (${rows.length-_incidentsShown} restantes)</button></div>`);
+  }
 }
 
 function renderCustomers(){
@@ -33,146 +42,55 @@ function renderCustomers(){
       .map(v=>String(v||'').toLowerCase()).join(' ');
     return !q || haystack.includes(q);
   });
-  document.getElementById('customer-list').innerHTML = rows.length ? rows.map(customer=>`
+  const visible=rows.slice(0,_customersShown);
+  document.getElementById('customer-list').innerHTML = visible.length ? visible.map(customer=>`
     <div class="customer-card">
-      <div class="list-title">${customer.nome}</div>
-      <div class="list-meta">${customer.endereco || 'Sem endereco'} Â· status ${customer.status}</div>
+      <div class="list-title">${esc(customer.nome)}</div>
+      <div class="list-meta">${esc(customer.endereco || 'Sem endereço')} · status ${esc(customer.status)}</div>
       <div class="incident-meta">
         <span class="incident-badge">${customer.connected ? 'Conectado' : 'Sem rota'}</span>
-        <span class="incident-badge">${customer.connection_count} conexoes</span>
-        <span class="incident-badge">${customer.open_orders} OS abertas</span>
+        <span class="incident-badge">${customer.connection_count} conexões</span>
       </div>
-      <div style="margin-top:8px;font-size:12px;color:var(--text2)">${customer.detalhes || 'Sem detalhes adicionais.'}</div>
+      <div style="margin-top:8px;font-size:12px;color:var(--text2)">${esc(customer.detalhes || 'Sem detalhes adicionais.')}</div>
       <div class="card-actions">
+        <button class="btn-ghost" onclick="openEditModal(${customer.id})">✏️ Editar</button>
+        <button class="btn-ghost" style="color:var(--red)" onclick="deleteElement(${customer.id})">🗑️ Excluir</button>
         <button class="btn-ghost" onclick="focusNode(${customer.id})">Abrir</button>
-        <button class="btn-ghost" onclick="openTraceModal(${customer.id})">Rota</button>
-        <button class="btn-primary" onclick="openOrderModal(null, ${customer.id})">Nova OS</button>
+        <button class="btn-primary" style="font-size:11px;padding:5px 12px" onclick="openTraceModal(${customer.id})">🔍 Caminho Óptico</button>
       </div>
     </div>
   `).join('') : '<div class="muted-empty">Nenhum cliente encontrado.</div>';
-}
-
-function renderOrders(){
-  const q=(document.getElementById('order-search')?.value||'').toLowerCase();
-  const rows=DB.service_orders.filter(order=>{
-    const haystack=[order.title,order.status,order.priority,order.assigned_to,order.notes]
-      .map(v=>String(v||'').toLowerCase()).join(' ');
-    return !q || haystack.includes(q);
-  });
-  document.getElementById('order-list').innerHTML = rows.length ? rows.map(order=>{
-    const customer = DB.customers.find(item=>String(item.id)===String(order.customer_id));
-    const element = DB.elements.find(item=>String(item.id)===String(order.element_id));
-    return `<div class="order-card">
-      <div class="list-title">${order.title}</div>
-      <div class="list-meta">${order.created_at || 'sem data'} ${order.scheduled_for ? `Â· agenda ${order.scheduled_for}` : ''}</div>
-      <div class="incident-meta">
-        <span class="incident-badge status-${order.status}">${order.status}</span>
-        <span class="incident-badge severity-${order.priority}">${order.priority}</span>
-        <span class="incident-badge">${order.assigned_to || 'sem responsÃ¡vel'}</span>
-      </div>
-      <div class="list-meta">${customer ? `Cliente: ${customer.nome}` : 'Sem cliente'} ${element ? `Â· Elemento: ${element.nome}` : ''}</div>
-      <div style="margin-top:8px;font-size:12px;color:var(--text2)">${order.notes || 'Sem observacoes.'}</div>
-      <div class="card-actions">
-        <button class="btn-ghost" onclick="openOrderModal(${order.id})">Editar</button>
-        ${order.element_id ? `<button class="btn-warn" onclick="focusNode(${order.element_id})">Ir para elemento</button>` : ''}
-      </div>
-    </div>`;
-  }).join('') : '<div class="muted-empty">Nenhuma ordem encontrada.</div>';
-}
-
-function populateOrderOptions(customerId='', elementId='', incidentId=''){
-  const customerSelect=document.getElementById('order-customer');
-  const elementSelect=document.getElementById('order-element');
-  const incidentSelect=document.getElementById('order-incident');
-  customerSelect.innerHTML=['<option value="">Sem cliente</option>'].concat(
-    DB.customers.map(item=>`<option value="${item.id}" ${String(customerId)===String(item.id)?'selected':''}>#${item.id} Â· ${item.nome}</option>`)
-  ).join('');
-  elementSelect.innerHTML=['<option value="">Sem elemento</option>'].concat(
-    DB.elements.map(item=>`<option value="${item.id}" ${String(elementId)===String(item.id)?'selected':''}>#${item.id} Â· ${item.nome}</option>`)
-  ).join('');
-  incidentSelect.innerHTML=['<option value="">Sem incidente</option>'].concat(
-    DB.incidents.map(item=>`<option value="${item.id}" ${String(incidentId)===String(item.id)?'selected':''}>#${item.id} Â· ${item.title}</option>`)
-  ).join('');
-}
-
-function openOrderModal(id=null, presetCustomerId=''){
-  const order = id ? DB.service_orders.find(item=>String(item.id)===String(id)) : null;
-  document.getElementById('order-modal-title').textContent = order ? 'Editar Ordem de Servico' : 'Nova Ordem de Servico';
-  document.getElementById('order-id').value = order?.id || '';
-  document.getElementById('order-title').value = order?.title || '';
-  document.getElementById('order-status').value = order?.status || 'open';
-  document.getElementById('order-priority').value = order?.priority || 'medium';
-  document.getElementById('order-assigned').value = order?.assigned_to || '';
-  document.getElementById('order-scheduled').value = order?.scheduled_for || '';
-  document.getElementById('order-notes').value = order?.notes || '';
-  populateOrderOptions(order?.customer_id || presetCustomerId, order?.element_id || '', order?.incident_id || '');
-  document.getElementById('order-delete-btn').style.display = order ? '' : 'none';
-  openModal('modal-order');
-}
-
-async function saveOrder(){
-  const id=document.getElementById('order-id').value;
-  const payload={
-    title: document.getElementById('order-title').value.trim(),
-    status: document.getElementById('order-status').value,
-    priority: document.getElementById('order-priority').value,
-    assigned_to: document.getElementById('order-assigned').value.trim(),
-    scheduled_for: document.getElementById('order-scheduled').value.trim(),
-    customer_id: document.getElementById('order-customer').value || null,
-    element_id: document.getElementById('order-element').value || null,
-    incident_id: document.getElementById('order-incident').value || null,
-    notes: document.getElementById('order-notes').value.trim(),
-  };
-  if(!payload.title){toast('Informe o titulo da OS','error');return;}
-  const method=id?'PUT':'POST';
-  const path=id?papi(`/service-orders/${id}`):papi('/service-orders');
-  const res=await api(method,path,payload);
-  if(!res) return;
-  closeModal('modal-order');
-  await loadAll();
-  await loadProjectInsights();
-  updateStats();renderCustomers();renderOrders();renderReports();renderDashboard();
-  toast('Ordem de servico salva','success');
-}
-
-async function deleteOrderUI(){
-  const id=document.getElementById('order-id').value;
-  if(!id || !confirm('Excluir esta ordem de servico?')) return;
-  const res=await api('DELETE',papi(`/service-orders/${id}`));
-  if(!res) return;
-  closeModal('modal-order');
-  await loadAll();
-  await loadProjectInsights();
-  updateStats();renderCustomers();renderOrders();renderReports();renderDashboard();
-  toast('Ordem de servico removida','success');
+  if(rows.length>_customersShown){
+    document.getElementById('customer-list').insertAdjacentHTML('beforeend',`<div style="text-align:center;margin-top:12px"><span style="font-size:10px;color:var(--text3)">Exibindo ${visible.length} de ${rows.length}</span><br><button class="btn-ghost" style="margin-top:6px" onclick="this.disabled=true;this.textContent='Carregando…';_customersShown+=${_PAGE_SIZE};renderCustomers()">Carregar mais (${rows.length-_customersShown} restantes)</button></div>`);
+  }
 }
 
 function renderReports(){
   const summary = dashboardSummary || {top_cto_occupancy:[], type_counts:{}, totals:{open_incidents:0}};
   document.getElementById('reports-cto-table').innerHTML = (summary.top_cto_occupancy||[]).length ? `
     <table class="report-table">
-      <thead><tr><th>CTO</th><th>Uso</th><th>Ocupacao</th></tr></thead>
-      <tbody>${summary.top_cto_occupancy.map(cto=>`<tr><td>${cto.nome}</td><td>${cto.used}/${cto.total}</td><td>${cto.occupancy}%</td></tr>`).join('')}</tbody>
+      <thead><tr><th>CTO</th><th>Uso</th><th>Ocupação</th></tr></thead>
+      <tbody>${summary.top_cto_occupancy.map(cto=>`<tr><td>${esc(cto.nome)}</td><td>${cto.used}/${cto.total}</td><td>${cto.occupancy}%</td></tr>`).join('')}</tbody>
     </table>` : '<div class="muted-empty">Sem dados de CTO.</div>';
 
   document.getElementById('reports-type-table').innerHTML = Object.keys(summary.type_counts||{}).length ? `
     <table class="report-table">
       <thead><tr><th>Tipo</th><th>Quantidade</th></tr></thead>
-      <tbody>${Object.entries(summary.type_counts||{}).map(([type,count])=>`<tr><td>${type}</td><td>${count}</td></tr>`).join('')}</tbody>
+      <tbody>${Object.entries(summary.type_counts||{}).map(([type,count])=>`<tr><td>${esc(type)}</td><td>${count}</td></tr>`).join('')}</tbody>
     </table>` : '<div class="muted-empty">Sem dados por tipo.</div>';
 
   const openIncidents=DB.incidents.filter(item=>item.status!=='closed');
   document.getElementById('reports-open-incidents').innerHTML = openIncidents.length ? openIncidents.map(item=>`
     <div class="list-card">
-      <div class="list-title">${item.title}</div>
-      <div class="list-meta">${item.severity} Â· ${item.status} Â· ${item.assigned_to || 'sem responsavel'}</div>
+      <div class="list-title">${esc(item.title)}</div>
+      <div class="list-meta">${esc(item.severity)} · ${esc(item.status)} · ${esc(item.assigned_to || 'sem responsável')}</div>
     </div>
   `).join('') : '<div class="muted-empty">Nenhum incidente aberto.</div>';
 
   document.getElementById('reports-activity').innerHTML = projectAudit.length ? projectAudit.slice(0,6).map(event=>`
     <div class="list-card">
-      <div class="list-title">${event.message}</div>
-      <div class="list-meta">${event.timestamp} Â· ${event.username}</div>
+      <div class="list-title">${esc(event.message)}</div>
+      <div class="list-meta">${esc(event.timestamp)} · ${esc(event.username)}</div>
     </div>
   `).join('') : '<div class="muted-empty">Sem atividade recente.</div>';
 }
@@ -180,11 +98,11 @@ function renderReports(){
 function populateIncidentElementOptions(selectedId=''){
   const select=document.getElementById('incident-element');
   select.innerHTML = ['<option value="">Sem vinculo</option>'].concat(
-    DB.elements.map(el=>`<option value="${el.id}" ${String(selectedId)===String(el.id)?'selected':''}>#${el.id} Â· ${el.nome}</option>`)
+    DB.elements.map(el=>`<option value="${el.id}" ${String(selectedId)===String(el.id)?'selected':''}>#${el.id} · ${esc(el.nome)}</option>`)
   ).join('');
 }
 
-function openIncidentModal(id=null){
+function openIncidentModal(id=null, prefillElementId=null){
   const incident = id ? DB.incidents.find(item=>String(item.id)===String(id)) : null;
   document.getElementById('incident-modal-title').textContent = incident ? 'Editar Incidente' : 'Novo Incidente';
   document.getElementById('incident-id').value = incident?.id || '';
@@ -194,9 +112,39 @@ function openIncidentModal(id=null){
   document.getElementById('incident-category').value = incident?.category || 'rede';
   document.getElementById('incident-assigned').value = incident?.assigned_to || '';
   document.getElementById('incident-notes').value = incident?.notes || '';
-  populateIncidentElementOptions(incident?.element_id || '');
+  populateIncidentElementOptions(incident?.element_id || prefillElementId || '');
   document.getElementById('incident-delete-btn').style.display = incident ? '' : 'none';
+  renderIncidentTimeline(incident);
   openModal('modal-incident');
+}
+
+function renderIncidentTimeline(incident){
+  const section=document.getElementById('incident-timeline-section');
+  const list=document.getElementById('incident-timeline-list');
+  if(!incident){section.style.display='none';return;}
+  const events=[];
+  if(incident.created_at) events.push({time:incident.created_at,label:'Incidente criado',icon:'📝',color:'var(--text2)'});
+  if(projectAudit && projectAudit.length){
+    projectAudit.filter(ev=>ev.entity_type==='incident' && String(ev.entity_id)===String(incident.id)).forEach(ev=>{
+      events.push({time:ev.timestamp||'—',label:ev.message||ev.action||'Atualização',icon:'🔧',color:'var(--accent)'});
+    });
+  }
+  if(incident.status==='closed' && incident.updated_at) events.push({time:incident.updated_at,label:'Incidente fechado',icon:'✅',color:'var(--green)'});
+  events.sort((a,b)=>String(a.time).localeCompare(String(b.time)));
+  if(events.length){
+    section.style.display='';
+    list.innerHTML=events.map(ev=>`
+      <div style="display:flex;gap:10px;align-items:flex-start;font-size:11px">
+        <span style="font-size:14px;flex-shrink:0">${ev.icon}</span>
+        <div>
+          <div style="font-weight:600;color:var(--text)">${esc(ev.label)}</div>
+          <div style="color:var(--text3);font-size:10px;font-family:'Courier New',monospace">${esc(ev.time)}</div>
+        </div>
+      </div>
+    `).join('');
+  } else {
+    section.style.display='none';
+  }
 }
 
 async function saveIncident(){
@@ -210,7 +158,7 @@ async function saveIncident(){
     element_id: document.getElementById('incident-element').value || null,
     notes: document.getElementById('incident-notes').value.trim(),
   };
-  if(!payload.title){toast('Informe o titulo do incidente','error');return;}
+  if(!payload.title){toast('Informe o título do incidente','error');return;}
   const method=id?'PUT':'POST';
   const path=id?papi(`/incidents/${id}`):papi('/incidents');
   const res=await api(method,path,payload);
@@ -240,53 +188,43 @@ function focusIncidentElement(id){
 }
 
 function switchTab(tab){
+  if(window.matchMedia('(max-width: 768px)').matches){
+    document.getElementById('sidebar')?.classList.add('collapsed');
+  }
+  // Update URL hash for routing
+  const route = ROUTES[tab];
+  if(route && window.location.hash !== '#'+route.path){
+    window.location.hash = route.path;
+  }
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.view-tab').forEach(v=>v.classList.remove('active'));
-  document.querySelectorAll('.module-chip').forEach(chip=>chip.classList.remove('active'));
   document.getElementById(`tab-${tab}`)?.classList.add('active');
   document.getElementById(`view-${tab}`)?.classList.add('active');
-  const moduleMap = {
-    dashboard: 'module-overview',
-    geomap: 'module-overview',
-    topology: 'module-overview',
-    dio: 'module-overview',
-    table: 'module-overview',
-    cables: 'module-cabos',
-    customers: 'module-clientes',
-    incidents: 'module-incidentes',
-    orders: 'module-os',
-    reports: 'module-relatorios',
-    validation: 'module-overview',
-    ixc: 'module-ixc',
-  };
-  document.getElementById(moduleMap[tab] || 'module-overview')?.classList.add('active');
   if(tab==='dashboard') renderDashboard();
-  if(tab==='geomap'){setTimeout(()=>geoMap?.invalidateSize(),50);}
+  if(tab==='geomap') scheduleMapRender();
   if(tab==='topology'&&!network) initTopology();
-  if(tab==='topology'&&network) setTimeout(()=>network.redraw(),50);
+  if(tab==='topology'&&network) scheduleMapRender();
   if(tab==='dio') renderDioPanels();
   if(tab==='table') renderTable();
   if(tab==='cables') renderCables();
   if(tab==='validation') renderValidation();
   if(tab==='customers') renderCustomers();
   if(tab==='incidents') renderIncidents();
-  if(tab==='orders') renderOrders();
   if(tab==='reports') renderReports();
   if(tab==='ixc') renderIxcSettings();
+  if(tab==='audit') loadGlobalAudit();
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
 // CTX MENU
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
 function showCtxMenu(x, y) {
   const m = document.getElementById('ctx-menu');
-  m.style.display = 'block';
   m.style.left = x + 'px';
   m.style.top = y + 'px';
-
-  // Mostrar opÃ§Ãµes baseadas no tipo do alvo (elemento ou cabo)
+  m.style.pointerEvents = '';
+  m.style.opacity = '1';
   const isCable = (ctxTargetType === 'cable');
-  
   if (!isCable && ctxTargetId) {
     const el = DB.elements.find(e => e.id === ctxTargetId);
     const showFusion = el?.tipo === 'ceo' || el?.tipo === 'cto';
@@ -297,9 +235,33 @@ function showCtxMenu(x, y) {
     document.getElementById('ctx-fusion').style.display = 'none';
     document.getElementById('ctx-cto-ports').style.display = 'none';
   }
-
-  // OpÃ§Ã£o de romper/reparar cabo
   document.getElementById('ctx-toggle-broken').style.display = isCable ? 'flex' : 'none';
+  const items = m.querySelectorAll('.ctx-item[style*="display: flex"],.ctx-item[style*="display:flex"],.ctx-item:not([style*="display"])');
+  items.forEach(i => i.setAttribute('tabindex', '-1'));
+  const visible = Array.from(items).filter(i => i.offsetHeight > 0);
+  if (visible.length) {
+    visible.forEach(i => i.setAttribute('tabindex', '-1'));
+    visible[0].setAttribute('tabindex', '0');
+    visible[0].focus();
+  }
+}
+function _ctxKeyDown(e) {
+  const m = document.getElementById('ctx-menu');
+  if (!m || m.style.opacity === '0') return;
+  const items = Array.from(m.querySelectorAll('.ctx-item')).filter(i => i.offsetHeight > 0);
+  const idx = items.indexOf(document.activeElement);
+  if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+    e.preventDefault();
+    const next = items[(idx + 1) % items.length];
+    if (next) { items.forEach(i => i.setAttribute('tabindex', '-1')); next.setAttribute('tabindex', '0'); next.focus(); }
+  } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+    e.preventDefault();
+    const prev = items[(idx - 1 + items.length) % items.length];
+    if (prev) { items.forEach(i => i.setAttribute('tabindex', '-1')); prev.setAttribute('tabindex', '0'); prev.focus(); }
+  } else if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    document.activeElement.click();
+  }
 }
 
 function ctxToggleBroken() {
@@ -308,7 +270,7 @@ function ctxToggleBroken() {
   }
   hideCtxMenu();
 }
-function hideCtxMenu(){document.getElementById('ctx-menu').style.display='none';}
+function hideCtxMenu(){const m=document.getElementById('ctx-menu');m.style.opacity='0';m.style.pointerEvents='none';}
 document.addEventListener('click',hideCtxMenu);
 function ctxEdit(){if(ctxTargetId)openEditModal(ctxTargetId);hideCtxMenu();}
 function ctxCable(){if(ctxTargetId)beginCableFrom(ctxTargetId);hideCtxMenu();}
@@ -318,7 +280,7 @@ function ctxLocate(){
   if(!ctxTargetId) return;
   const el=DB.elements.find(e=>e.id===ctxTargetId);
   if(el?.lat&&el?.lng){switchTab('geomap');geoMap.setView([el.lat,el.lng],16,{animate:true});}
-  else toast('âš ï¸ Elemento sem coordenadas','error');
+  else toast('⚠️ Elemento sem coordenadas','error');
   hideCtxMenu();
 }
 async function ctxStatus(status){
@@ -339,18 +301,29 @@ async function ctxDelete(){
   await deleteElement(ctxTargetId);
   hideCtxMenu();
 }
+function ctxCreateIncident(){
+  if(!ctxTargetId) return;
+  hideCtxMenu();
+  openIncidentModal(null, ctxTargetId);
+}
+async function ctxDuplicate(){
+  if(!ctxTargetId) return;
+  hideCtxMenu();
+  const el=await api('POST',papi(`/elements/${ctxTargetId}/duplicate`));
+  DB.elements.push(el);
+  addOrUpdateMarker(el);
+  if(nodesDS){const tc=TYPE_CONFIG[el.tipo]||{};nodesDS.add({id:el.id,label:el.nome,color:{background:(tc.color||'#888')+'22',border:tc.color||'#888'},shape:'dot',size:18});}
+  updateStats();renderSidebar();renderTable();
+  toast(`📋 "${el.nome}" copiado!`,'success');
+}
 
 registerPublicApi('workflows', {
   renderIncidents,
   renderCustomers,
-  renderOrders,
-  populateOrderOptions,
-  openOrderModal,
-  saveOrder,
-  deleteOrderUI,
   renderReports,
   populateIncidentElementOptions,
   openIncidentModal,
+  renderIncidentTimeline,
   saveIncident,
   deleteIncidentUI,
   focusIncidentElement,
@@ -365,14 +338,16 @@ registerPublicApi('workflows', {
   ctxLocate,
   ctxStatus,
   ctxDelete,
+  ctxCreateIncident,
+  ctxDuplicate,
 }, [
   'deleteIncidentUI',
-  'deleteOrderUI',
   'openIncidentModal',
-  'openOrderModal',
+  'renderIncidentTimeline',
   'switchTab',
   'ctxCable',
   'ctxDelete',
+  'ctxDuplicate',
   'ctxEdit',
   'ctxFusion',
   'ctxLocate',
@@ -381,5 +356,5 @@ registerPublicApi('workflows', {
   'ctxToggleBroken',
 ]);
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
 // EXPORT

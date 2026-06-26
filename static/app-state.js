@@ -1,4 +1,10 @@
 // Shared utilities, catalogs, and global state
+const _PAGE_SIZE=20;
+let _incidentsShown=_PAGE_SIZE;
+let _customersShown=_PAGE_SIZE;
+let _cablesShown=_PAGE_SIZE;
+let _tableShown=50;
+
 function haversineDistance(lat1, lon1, lat2, lon2) {
   const R = 6371000;
   const phi1 = lat1 * Math.PI / 180;
@@ -42,18 +48,18 @@ const ICONS = {
 };
 
 const TYPE_CONFIG = {
-  bgp:     {label:'BGP/Upstream',color:'#ff6b6b'},
-  core:    {label:'Core/DC',     color:'#ff9100'},
-  dio:     {label:'DIO',         color:'#c77dff'},
-  olt:     {label:'OLT',         color:'#0080ff'},
-  onu:     {label:'ONU/ONT',     color:'#40c4ff'},
-  ceo:     {label:'CEO',         color:'#ffe066'},
-  cto:     {label:'CTO',         color:'#00e676'},
-  splitter:{label:'Splitter',    color:'#00c8ff'},
-  switch:  {label:'Switch',      color:'#ff80ab'},
-  roteador:{label:'Roteador',    color:'#69f0ae'},
-  poste:   {label:'Poste',       color:'#a1887f'},
-  cliente: {label:'Cliente',     color:'#a0f0c0'},
+  bgp:     {label:'BGP/Upstream',color:'#ff6b6b', cat:'core'},
+  core:    {label:'Core/DC',     color:'#ff9100', cat:'core'},
+  dio:     {label:'DIO',         color:'#c77dff', cat:'core'},
+  olt:     {label:'OLT',         color:'#0080ff', cat:'core'},
+  onu:     {label:'ONU/ONT',     color:'#40c4ff', cat:'rua'},
+  ceo:     {label:'CEO',         color:'#ffe066', cat:'rua'},
+  cto:     {label:'CTO',         color:'#00e676', cat:'rua'},
+  splitter:{label:'Splitter',    color:'#00c8ff', cat:'core'},
+  switch:  {label:'Switch',      color:'#ff80ab', cat:'core'},
+  roteador:{label:'Roteador',    color:'#69f0ae', cat:'core'},
+  poste:   {label:'Poste',       color:'#a1887f', cat:'rua'},
+  cliente: {label:'Cliente',     color:'#a0f0c0', cat:'rua'},
 };
 
 const FIBER_COLORS = {
@@ -116,7 +122,34 @@ const FIBER_INDIVIDUAL_COLORS = [
   {n:23,nome:'Rosa/Anilha',hex:'#AD1457'},{n:24,nome:'Aqua/Anilha',hex:'#00838F'},
 ];
 
-let DB = {elements:[],connections:[],dios:[],positions:{},incidents:[],service_orders:[],customers:[],cables:[]};
+const FIBERS_PER_TUBE = 12;
+
+function getFibersPerTube(cable) {
+  const val = Number(
+    (cable && cable.fibers_per_tube) ||
+    (cable && cable.fibras_por_tubo) ||
+    (cable && cable.tube_size) ||
+    FIBERS_PER_TUBE
+  );
+  return (val > 0) ? val : FIBERS_PER_TUBE;
+}
+
+const TUBE_COLORS = [
+  '#1A73E8', // Azul
+  '#FF9800', // Laranja
+  '#4CAF50', // Verde
+  '#795548', // Marrom
+  '#9E9E9E', // Cinza
+  '#ECEFF1', // Branco
+  '#F44336', // Vermelho
+  '#212121', // Preto
+  '#FFEB3B', // Amarelo
+  '#9C27B0', // Violeta
+  '#E91E63', // Rosa
+  '#00BCD4', // Aqua
+];
+
+let DB = {elements:[],connections:[],dios:[],positions:{},incidents:[],customers:[],cables:[]};
 let currentProjectId = null;
 let selectedNodeId = null;
 let ctxTargetId = null;
@@ -125,6 +158,7 @@ let selectedAddType = null;
 let activeFilter = null;
 let globalSearchTerm = '';
 let activeStatusFilter = 'all';
+let showOnlyUnpositioned = false;
 let selectedFiberColor = 'Azul';
 let selectedPortFiberColor = 'Azul';
 let currentPropsId = null;
@@ -145,6 +179,7 @@ let cableLayers = [];
 let mapMode = 'select';
 let cableState = null;
 let placeTargetId = null;
+let measureState = {points:[], polyline:null, markers:[], tooltip:null, finished:false};
 
 let network = null;
 let nodesDS = null;
@@ -159,6 +194,7 @@ let pendingCableObs = '';
 let currentSplitCtoId = null;
 let currentSplitPortNum = null;
 let currentCtoIdForSplit = null;
+let _currentCtoId = null;
 
 let toastTimer = null;
 let currentSession = {username:'', nome:'', role:'viewer', permissions:{}};
@@ -172,6 +208,30 @@ const PERM_LABELS = {
   manage_projects:'Gerenciar projetos',
   manage_users:'Gerenciar usuários',
 };
+
+// Route configuration for hash-based navigation
+const ROUTES = {
+  'dashboard': {path:'/dashboard', label:'Dashboard', tab:'dashboard'},
+  'geomap':    {path:'/mapa', label:'Mapa', tab:'geomap'},
+  'topology':  {path:'/topologia', label:'Topologia', tab:'topology'},
+  'dio':       {path:'/dio', label:'DIO', tab:'dio'},
+  'table':     {path:'/inventario', label:'Inventário', tab:'table'},
+  'cables':    {path:'/cabos', label:'Cabos', tab:'cables'},
+  'validation':{path:'/validacao', label:'Validação', tab:'validation'},
+  'customers': {path:'/clientes', label:'Clientes', tab:'customers'},
+  'incidents': {path:'/incidentes', label:'Incidentes', tab:'incidents'},
+  'reports':   {path:'/relatorios', label:'Relatórios', tab:'reports'},
+  'ixc':       {path:'/ixc', label:'IXC', tab:'ixc'},
+  'audit':     {path:'/auditoria', label:'Auditoria', tab:'audit'},
+};
+
+function getRouteFromHash(){
+  const hash = window.location.hash.replace('#','');
+  for(const [key,route] of Object.entries(ROUTES)){
+    if(route.path === hash) return key;
+  }
+  return 'geomap'; // default
+}
 
 const App = window.App || (window.App = {});
 App.modules = App.modules || {};

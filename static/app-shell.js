@@ -1,9 +1,9 @@
-﻿// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+﻿// ═══════════════════════════════════════════════════════
 async function exportData(){
   const data=await api('GET',papi('/export'));
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`${currentProjectId}.json`;a.click();
-  toast('ðŸ“¥ Exportado!','success');
+  toast('📥 Exportado!','success');
 }
 
 function downloadProjectAsset(path){
@@ -27,7 +27,7 @@ function exportKmz(){
 
 function triggerGeoImport(){
   if(!canDo('edit_elements')){
-    toast('ðŸ”’ Sem permissao para importar geodados','error');
+    toast('🔒 Sem permissão para importar geodados','error');
     return;
   }
   const input=document.getElementById('geo-import-input');
@@ -40,20 +40,23 @@ async function handleGeoImport(event){
   if(!file) return;
   const ext=file.name.split('.').pop()?.toLowerCase();
   if(!['kml','kmz'].includes(ext)){
-    toast('âŒ Use um arquivo .kml ou .kmz','error');
+    toast('❌ Use um arquivo .kml ou .kmz','error');
     event.target.value='';
     return;
   }
-  const formData=new FormData();
+    const formData=new FormData();
   formData.append('file',file);
   try{
-    const response=await fetch(papi('/import-geodata'),{method:'POST',body:formData});
+    const headers={};
+    if(_csrfToken) headers['X-CSRFToken']=_csrfToken;
+    const response=await fetch(papi('/import-geodata'),{method:'POST',headers,body:formData,credentials:'same-origin'});
     if(response.status===401){window.location.href='/login';return;}
     const payload=await response.json().catch(()=>({error:`HTTP ${response.status}`}));
-    if(!response.ok){toast('âŒ '+(payload.error||'Falha ao importar'),'error');return;}
+    if(!response.ok){toast('❌ '+(payload.error||'Falha ao importar'),'error');return;}
     await loadAll();
     await loadProjectInsights();
-    updateStats();renderSidebar();renderTable();renderDioPanels();renderCustomers();renderIncidents();renderOrders();renderCables();renderValidation();renderReports();renderDashboard();
+    showProjectAlerts();
+    updateStats();renderSidebar();renderTable();renderDioPanels();renderCustomers();renderIncidents();renderCables();renderValidation();renderReports();renderDashboard();
     Object.values(mapMarkers).forEach(m=>geoMap.removeLayer(m));
     mapMarkers={};
     cableLayers.forEach(c=>geoMap.removeLayer(c.layer));
@@ -71,7 +74,68 @@ async function handleGeoImport(event){
     }
     toast(`Importado: ${payload.imported_elements||0} elementos e ${payload.imported_connections||0} cabos`,'success');
   }catch(e){
-    toast('âŒ Erro ao importar arquivo geoespacial','error');
+    toast('❌ Erro ao importar arquivo geoespacial','error');
+  }finally{
+    event.target.value='';
+  }
+}
+
+let _pendingImportFile=null;
+function triggerJsonImport(){
+  if(!canDo('edit_elements')){
+    toast('🔒 Sem permissão para importar','error');
+    return;
+  }
+  const input=document.getElementById('json-import-input');
+  input.value='';
+  input.click();
+}
+
+async function handleJsonImport(event){
+  const file=event.target.files?.[0];
+  if(!file) return;
+  const ext=file.name.split('.').pop()?.toLowerCase();
+  if(ext!=='json'){
+    toast('❌ Use um arquivo .json','error');
+    event.target.value='';
+    return;
+  }
+  _pendingImportFile=file;
+  openModal('modal-import-mode');
+}
+
+async function confirmImportMode(mode){
+  closeModal('modal-import-mode');
+  const file=_pendingImportFile;
+  _pendingImportFile=null;
+  if(!file) return;
+  const fd=new FormData();
+  fd.append('file',file);
+  fd.append('mode',mode);
+  try{
+    await apiUpload('POST',papi('/import-json'),fd);
+    await loadAll();
+    await loadProjectInsights();
+    showProjectAlerts();
+    updateStats();renderSidebar();renderTable();renderDioPanels();renderCustomers();renderIncidents();renderCables();renderValidation();renderReports();renderDashboard();
+    Object.values(mapMarkers).forEach(m=>geoMap.removeLayer(m));
+    mapMarkers={};
+    cableLayers.forEach(c=>geoMap.removeLayer(c.layer));
+    cableLayers=[];
+    refreshAllMarkers();
+    refreshAllCables();
+    if(network){
+      const data=buildVisData();
+      nodesDS.clear();edgesDS.clear();
+      nodesDS.add(data.nodes);edgesDS.add(data.edges);
+      Object.entries(DB.positions).forEach(([id,pos])=>{
+        const nid=parseInt(id);
+        if(nodesDS.get(nid)) nodesDS.update({id:nid,x:pos.x,y:pos.y});
+      });
+    }
+    toast('📥 JSON importado com sucesso!','success');
+  }catch(e){
+    toast('❌ Erro ao importar JSON','error');
   }finally{
     event.target.value='';
   }
@@ -81,14 +145,18 @@ function exportProjectSummary(){
   const data = dashboardSummary || {};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`${currentProjectId}_relatorio.json`;a.click();
-  toast('ðŸ“„ RelatÃ³rio exportado','success');
+  toast('📄 Relatório JSON exportado','success');
 }
 
-function toggleSidebar(){document.getElementById('sidebar').classList.toggle('collapsed');}
+function openHtmlReport(){
+  window.open(papi('/report'),'_blank');
+}
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+function toggleSidebar(){const sb=document.getElementById('sidebar');sb.classList.toggle('collapsed');const collapsed=sb.classList.contains('collapsed');const btn=document.getElementById('sidebar-toggle-btn');if(btn){btn.innerHTML=collapsed?'▸ Expandir':'◂ Recolher';btn.title=collapsed?'Expandir barra lateral':'Recolher barra lateral';}scheduleMapRender();}
+
+// ═══════════════════════════════════════════════════════
 // TOAST
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
 function toast(msg,type='success'){
   clearTimeout(toastTimer);
   const el=document.getElementById('toast');
@@ -97,22 +165,68 @@ function toast(msg,type='success'){
   toastTimer=setTimeout(()=>el.className='',3500);
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+async function checkHealth(){
+  try{
+    const r=await fetch('/api/health',{credentials:'same-origin'});
+    const data=await r.json();
+    const dot=document.getElementById('health-dot');
+    const txt=document.getElementById('health-text');
+    const badge=document.getElementById('health-badge');
+    if(!dot||!txt) return;
+    if(data.status==='ok'&&data.database_ok!==false){
+      dot.style.background='var(--green)';txt.textContent='OK';
+      badge.style.borderColor='var(--green)';badge.style.color='var(--green)';
+      badge.title='Sistema operacional';
+    }else{
+      dot.style.background='var(--orange)';txt.textContent='Degradado';
+      badge.style.borderColor='var(--orange)';badge.style.color='var(--orange)';
+      badge.title='Sistema degradado — banco pode estar indisponível';
+    }
+  }catch(e){
+    const dot=document.getElementById('health-dot');
+    const txt=document.getElementById('health-text');
+    const badge=document.getElementById('health-badge');
+    if(dot){dot.style.background='var(--red)';}
+    if(txt){txt.textContent='Erro';}
+    if(badge){badge.style.borderColor='var(--red)';badge.style.color='var(--red)';badge.title='Sem resposta do servidor';}
+  }
+}
+setInterval(checkHealth,60000);
+setTimeout(checkHealth,3000);
+
+// ═══════════════════════════════════════════════════════
 // KEYBOARD
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
 document.addEventListener('keydown',async e=>{
   if(e.key==='Escape'){
-    document.querySelectorAll('.modal-overlay.open').forEach(m=>m.classList.remove('open'));
-    hideCtxMenu();
-    if(mapMode==='cable'||mapMode==='place'){setMapMode('select');toast('Modo cancelado','success');}
+    const ctxMenu=document.getElementById('ctx-menu');
+    if(ctxMenu&&ctxMenu.classList.contains('open')){hideCtxMenu();return;}
+    const quickAdd=document.getElementById('quick-add-popup');
+    if(quickAdd&&quickAdd.classList.contains('open')){hideQuickAddPopup();return;}
+    if(_modalStack.length){closeTopModal();return;}
+    if(document.getElementById('right-panel')&&!document.getElementById('right-panel').classList.contains('hidden')){closePanel();return;}
+    if(mapMode==='cable'||mapMode==='place'){
+      if(mapMode==='cable'&&cableState&&cableState.waypoints.length>0){
+        if(!confirm('Cancelar traçado de cabo? Os pontos serão perdidos.')) return;
+      }
+      const wasRedraw=_redrawCableId;
+      setMapMode('select');toast('Modo cancelado','success');
+      if(wasRedraw){const cid=wasRedraw;_redrawCableId=null;openEditCableModal(cid);}
+      return;
+    }
     return;
   }
   if(e.key==='Delete'||e.key==='Backspace'){
     const tag=document.activeElement?.tagName;
     if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') return;
     if(!selectedNodeId) return;
+    if(typeof canDo==='function'&&!canDo('edit_elements')) return;
     const el=DB.elements.find(x=>x.id===selectedNodeId);if(!el) return;
-    if(!confirm(`Remover "${el.nome}"?`)) return;
+    const connected=DB.connections.filter(c=>c.from===el.id||c.to===el.id).length;
+    let msg=`Remover "${el.nome}"?`;
+    if(connected) msg+=`\n\n⚠️ ${connected} cabo(s) conectado(s) também será(ão) removido(s).`;
+    msg+='\nEsta ação não pode ser desfeita.';
+    if(!confirm(msg)) return;
     await deleteElement(selectedNodeId);
     selectedNodeId=null;
   }
@@ -125,7 +239,11 @@ registerPublicApi('shell', {
   exportKmz,
   triggerGeoImport,
   handleGeoImport,
+  triggerJsonImport,
+  handleJsonImport,
+  confirmImportMode,
   exportProjectSummary,
+  openHtmlReport,
   toggleSidebar,
   toast,
 }, [
@@ -133,9 +251,11 @@ registerPublicApi('shell', {
   'exportKml',
   'exportKmz',
   'exportProjectSummary',
+  'openHtmlReport',
   'toggleSidebar',
   'triggerGeoImport',
+  'triggerJsonImport',
 ]);
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
 // AUTH & PERMISSIONS

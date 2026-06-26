@@ -9,6 +9,8 @@ import zipfile
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+import defusedxml.ElementTree as SafeET
+
 from . import project_service
 
 KML_NS = "http://www.opengis.net/kml/2.2"
@@ -40,15 +42,12 @@ def _parse_float(value):
 
 def _parse_coords(raw: str) -> list[tuple[float, float]]:
     coords = []
-    for chunk in (raw or "").replace("\n", " ").split():
-        parts = chunk.split(",")
-        if len(parts) < 2:
-            continue
-        lng = _parse_float(parts[0])
-        lat = _parse_float(parts[1])
-        if lat is None or lng is None:
-            continue
-        coords.append((lat, lng))
+    tokens = (raw or "").replace("\n", " ").replace(",", " ").split()
+    for i in range(0, len(tokens) - 1, 3):
+        lng = _parse_float(tokens[i])
+        lat = _parse_float(tokens[i + 1])
+        if lat is not None and lng is not None:
+            coords.append((lat, lng))
     return coords
 
 
@@ -215,12 +214,17 @@ def export_project_kmz(pid: str) -> tuple[str, bytes] | None:
     return project_name, buffer.getvalue()
 
 
+MAX_GEODATA_SIZE = 10 * 1024 * 1024  # 10MB
+
+
 def import_project_geodata(pid: str, filename: str, file_bytes: bytes) -> dict | None:
     db = project_service.load_project(pid)
     if not db:
         return None
     if not file_bytes:
         raise ValueError("Arquivo vazio")
+    if len(file_bytes) > MAX_GEODATA_SIZE:
+        raise ValueError(f"Arquivo excede o limite de {MAX_GEODATA_SIZE // (1024 * 1024)}MB")
 
     suffix = Path(filename or "").suffix.lower()
     if suffix == ".kmz":
@@ -238,7 +242,7 @@ def import_project_geodata(pid: str, filename: str, file_bytes: bytes) -> dict |
         raise ValueError("Formato suportado: .kml ou .kmz")
 
     try:
-        root = ET.fromstring(kml_bytes)
+        root = SafeET.fromstring(kml_bytes)
     except ET.ParseError as exc:
         raise ValueError("Arquivo KML invalido") from exc
 

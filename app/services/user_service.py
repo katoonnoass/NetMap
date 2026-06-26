@@ -3,6 +3,7 @@ Servico de usuarios com persistencia em JSON.
 """
 import hashlib
 import re
+import time
 from datetime import datetime
 
 from flask import current_app
@@ -11,6 +12,18 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from ..utils.storage import load_json, save_json
 
 LEGACY_HASH_RE = re.compile(r"^[a-f0-9]{64}$")
+MIN_PASSWORD_LENGTH = 12
+MAX_LOGIN_ATTEMPTS = 5
+LOCKOUT_SECONDS = 300
+
+_PASSWORD_COMPLEXITY_RE = re.compile(r"(?=.*[a-z])(?=.*[A-Z])(?=.*\d)")
+
+
+def _validate_password_complexity(password: str) -> None:
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise ValueError(f"A senha precisa ter pelo menos {MIN_PASSWORD_LENGTH} caracteres")
+    if not _PASSWORD_COMPLEXITY_RE.search(password):
+        raise ValueError("A senha deve conter pelo menos uma letra maiuscula, uma minuscula e um numero")
 
 
 def _users_file():
@@ -53,7 +66,11 @@ def ensure_admin() -> None:
     if users:
         return
 
-    admin_password = current_app.config.get("DEFAULT_ADMIN_PASSWORD", "admin123")
+    admin_password = str(current_app.config.get("DEFAULT_ADMIN_PASSWORD", "") or "")
+    if len(admin_password) < MIN_PASSWORD_LENGTH:
+        raise RuntimeError(
+            "DEFAULT_ADMIN_PASSWORD must contain at least 12 characters"
+        )
     users["admin"] = {
         "username": "admin",
         "password": hash_password(admin_password),
@@ -61,7 +78,7 @@ def ensure_admin() -> None:
         "nome": "Administrador",
         "created_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
         "active": True,
-        "password_needs_rotation": admin_password == "admin123",
+        "password_needs_rotation": True,
     }
     save_users(users)
 
@@ -72,15 +89,33 @@ def authenticate(username: str, password: str) -> dict | None:
     if not user or not user.get("active", True):
         return None
 
+    lockout_until = user.get("lockout_until", 0)
+    failed_attempts = user.get("failed_attempts", 0)
+    if lockout_until and time.time() < lockout_until:
+        return None
+
     valid, legacy = _verify_password(user.get("password", ""), password)
     if not valid:
+        failed_attempts += 1
+        user["failed_attempts"] = failed_attempts
+        if failed_attempts >= MAX_LOGIN_ATTEMPTS:
+            user["lockout_until"] = time.time() + LOCKOUT_SECONDS
+            user["failed_attempts"] = 0
+        else:
+            user.pop("lockout_until", None)
+        users[username] = user
+        save_users(users)
         return None
+
+    user["failed_attempts"] = 0
+    user.pop("lockout_until", None)
 
     if legacy:
         user["password"] = hash_password(password)
         user["password_needs_rotation"] = False
-        users[username] = user
-        save_users(users)
+
+    users[username] = user
+    save_users(users)
 
     return user
 
@@ -106,8 +141,7 @@ def create_user(username: str, password: str, nome: str, role: str) -> dict:
         raise ValueError("Username e senha sao obrigatorios")
     if not re.match(r"^[a-z0-9_]{3,32}$", username):
         raise ValueError("Username invalido (letras minusculas, numeros e _, 3-32 chars)")
-    if len(password) < 8:
-        raise ValueError("A senha precisa ter pelo menos 8 caracteres")
+    _validate_password_complexity(password)
     if role not in roles:
         raise ValueError("Role invalido")
 
@@ -143,8 +177,8 @@ def update_user(uid: str, data: dict, current_uid: str) -> None:
     if "role" in data and new_role not in roles:
         raise ValueError("Role invalido")
 
-    if "password" in data and data["password"] and len(data["password"].strip()) < 8:
-        raise ValueError("A senha precisa ter pelo menos 8 caracteres")
+    if "password" in data and data["password"] and str(data["password"]).strip():
+        _validate_password_complexity(str(data["password"]).strip())
 
     if user.get("role") == "admin":
         if new_role != "admin" and len(admins) <= 1:
@@ -166,6 +200,33 @@ def update_user(uid: str, data: dict, current_uid: str) -> None:
         user["password_needs_rotation"] = False
 
     users[uid] = user
+    save_users(users)
+
+
+def change_password(uid: str, current_password: str, new_password: str) -> None:
+    users = load_users()
+    user = users.get(uid)
+    if not user or not user.get("active", True):
+        raise LookupError("Usuario nao encontrado")
+    valid, _ = _verify_password(user.get("password", ""), current_password)
+    if not valid:
+        raise ValueError("Senha atual invalida")
+    _validate_password_complexity(new_password)
+    if current_password == new_password:
+        raise ValueError("A nova senha deve ser diferente da senha atual")
+    user["password"] = hash_password(new_password)
+    user["password_needs_rotation"] = False
+    users[uid] = user
+    save_users(users)
+
+
+def set_initial_password(uid: str, password: str) -> None:
+    _validate_password_complexity(password)
+    users = load_users()
+    if uid not in users:
+        raise LookupError("Usuario nao encontrado")
+    users[uid]["password"] = hash_password(password)
+    users[uid]["password_needs_rotation"] = True
     save_users(users)
 
 

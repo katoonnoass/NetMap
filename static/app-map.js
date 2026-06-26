@@ -1,58 +1,136 @@
 ﻿// GEO MAP INIT
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
+let markerClusterGroup = null;
+let mapResizeObserver = null;
+let mapResizeFrame = null;
+let mapResizeTimer = null;
+
+function refreshMapRendering(){
+  mapResizeFrame=null;
+  const geoContainer=document.getElementById('geo-map-container');
+  if(geoMap&&geoContainer&&geoContainer.offsetWidth>0&&geoContainer.offsetHeight>0){
+    geoMap.invalidateSize({pan:false,debounceMoveend:true});
+  }
+  const topologyContainer=document.getElementById('network-canvas');
+  if(network&&topologyContainer&&topologyContainer.offsetWidth>0&&topologyContainer.offsetHeight>0){
+    network.setSize('100%','100%');
+    network.redraw();
+  }
+}
+
+function scheduleMapRender(){
+  if(mapResizeFrame!==null) cancelAnimationFrame(mapResizeFrame);
+  mapResizeFrame=requestAnimationFrame(refreshMapRendering);
+  clearTimeout(mapResizeTimer);
+  mapResizeTimer=setTimeout(()=>{
+    if(mapResizeFrame!==null) cancelAnimationFrame(mapResizeFrame);
+    mapResizeFrame=requestAnimationFrame(refreshMapRendering);
+  },260);
+}
+
 function initGeoMap(){
   if(geoMap) return;
-  geoMap=L.map('geo-map',{center:[-16.8225,-49.245],zoom:13,zoomControl:true,attributionControl:true});
+  geoMap=L.map('geo-map',{
+    center:[-16.8225,-49.245],
+    zoom:13,
+    zoomControl:false,
+    attributionControl:true,
+    fadeAnimation:false,
+    zoomAnimation:!L.Browser.gecko,
+    markerZoomAnimation:!L.Browser.gecko,
+    inertia:!L.Browser.gecko,
+  });
+  L.control.zoom({position:'bottomright'}).addTo(geoMap);
   tileLayer=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-    attribution:'Â© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     maxZoom:19,
+    keepBuffer:8,
+    updateWhenIdle:false,
+    updateWhenZooming:true,
+    updateInterval:50,
+    opacity:1,
   }).addTo(geoMap);
+
+  markerClusterGroup = L.markerClusterGroup({
+    maxClusterRadius: 60,
+    spiderfyOnMaxZoom: true,
+    showCoverageOnHover: false,
+    zoomToBoundsOnClick: true,
+    disableClusteringAtZoom: 18,
+    iconCreateFunction: function(cluster) {
+      const count = cluster.getChildCount();
+      const size = count < 10 ? 28 : count < 50 ? 36 : 44;
+      return L.divIcon({
+        html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:var(--accent);border:2px solid var(--surface);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800;box-shadow:0 2px 8px rgba(0,0,0,.3)">${count}</div>`,
+        className: 'map-cluster-marker',
+        iconSize: [size, size],
+        iconAnchor: [size/2, size/2]
+      });
+    }
+  });
+  geoMap.addLayer(markerClusterGroup);
 
   // Map click handler
   geoMap.on('click',handleMapClick);
+  geoMap.on('dblclick',handleMeasureDblClick);
   geoMap.on('mousemove',handleMapMouseMove);
-  geoMap.on('contextmenu',e=>{e.originalEvent.preventDefault();});
+  geoMap.on('contextmenu',e=>{
+    e.originalEvent.preventDefault();
+    if(mapMode!=='select') return;
+    showCategoryMenu(e.latlng.lat,e.latlng.lng,e.originalEvent.clientX,e.originalEvent.clientY);
+  });
 
-  setTimeout(()=>geoMap.invalidateSize(),300);
+  if(typeof ResizeObserver!=='undefined'){
+    mapResizeObserver=new ResizeObserver(scheduleMapRender);
+    mapResizeObserver.observe(document.getElementById('center'));
+  }
+  setTimeout(scheduleMapRender,300);
+  window.addEventListener('resize',scheduleMapRender,{passive:true});
+  populateMapLegend();
 }
 
 function changeMapLayer(val){
   if(tileLayer) geoMap.removeLayer(tileLayer);
   if(val==='satellite'){
     tileLayer=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      {attribution:'Â© Esri',maxZoom:19}).addTo(geoMap);
+      {attribution:'© Esri',maxZoom:19,keepBuffer:8,updateWhenIdle:false,updateWhenZooming:true,updateInterval:50,opacity:1});
+    document.documentElement.style.setProperty('--map-bg','#1a1a1a');
   } else if(val==='dark'){
     tileLayer=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
-      {attribution:'Â© Esri',maxZoom:16}).addTo(geoMap);
+      {attribution:'© Esri',maxZoom:16,keepBuffer:8,updateWhenIdle:false,updateWhenZooming:true,updateInterval:50,opacity:1});
+    document.documentElement.style.setProperty('--map-bg','#1a2a3a');
   } else {
     tileLayer=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-      {attribution:'Â© OpenStreetMap',maxZoom:19}).addTo(geoMap);
+      {attribution:'© OpenStreetMap',maxZoom:19,keepBuffer:8,updateWhenIdle:false,updateWhenZooming:true,updateInterval:50,opacity:1});
+    document.documentElement.style.removeProperty('--map-bg');
   }
+  tileLayer.addTo(geoMap);
+  scheduleMapRender();
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
 // MAP MARKERS
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
 function createMarkerIcon(el, selected=false){
   const tc=TYPE_CONFIG[el.tipo]||{color:'#888'};
   const color=tc.color;
   const statusColor=el.status==='offline'?'#ff3d57':el.status==='alerta'?'#ff9100':color;
-  const bg=el.status==='offline'?'rgba(255,61,87,.18)':el.status==='alerta'?'rgba(255,145,0,.18)':color+'22';
-  const selRing=selected?`box-shadow:0 0 0 3px rgba(255,255,255,0.5);`:'';
-  const iconSvg=ICONS[el.tipo]||'';
-  const html=`<div style="width:36px;height:36px;border-radius:50%;background:${bg};border:2.5px solid ${statusColor};display:flex;align-items:center;justify-content:center;cursor:pointer;${selRing}transition:transform .15s;color:${color};position:relative">
+  const iconSvg=(ICONS[el.tipo]||'').replace('width="16"','width="14"').replace('height="16"','height="14"');
+  const selShadow=selected?'box-shadow:0 0 0 3px var(--accent-glow),0 4px 12px rgba(0,0,0,.3);':'box-shadow:0 2px 6px rgba(0,0,0,.2);';
+  const selBorder=selected?'3px':'2px';
+  const label=selected?`<div style="position:absolute;top:32px;left:50%;transform:translateX(-50%);background:rgba(8,12,20,.85);color:#e8edf5;font-size:9px;font-weight:600;padding:2px 7px;border-radius:4px;white-space:nowrap;pointer-events:none;border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(4px)">${esc(el.nome)}</div>`:'';
+  const html=`<div style="width:28px;height:28px;border-radius:6px;background:${statusColor};border:${selBorder} solid ${selected?'rgba(255,255,255,.9)':statusColor};display:flex;align-items:center;justify-content:center;cursor:pointer;${selShadow}transition:all .15s;color:#fff;position:relative">
     ${iconSvg}
-    <div style="position:absolute;top:-3px;right:-3px;width:10px;height:10px;border-radius:50%;background:${statusColor};border:2px solid #080c14"></div>
-  </div>
-  <div style="position:absolute;top:38px;left:50%;transform:translateX(-50%);background:rgba(8,12,20,.9);color:#e8edf5;font-size:10px;font-weight:600;padding:2px 6px;border-radius:4px;white-space:nowrap;font-family:sans-serif;pointer-events:none;border:1px solid rgba(255,255,255,.1)">${el.nome}</div>`;
-  return L.divIcon({html,className:'map-node-marker',iconSize:[36,36],iconAnchor:[18,18],popupAnchor:[0,-24]});
+  </div>${label}`;
+  return L.divIcon({html,className:'map-node-marker',iconSize:[selected?40:28,selected?48:32],iconAnchor:[selected?20:14,selected?24:16]});
 }
 
 function addOrUpdateMarker(el) {
   const pos = el.lat && el.lng ? [el.lat, el.lng] : null;
   if (!pos) {
     if (mapMarkers[el.id]) {
-      geoMap.removeLayer(mapMarkers[el.id]);
+      if (markerClusterGroup) markerClusterGroup.removeLayer(mapMarkers[el.id]);
+      else geoMap.removeLayer(mapMarkers[el.id]);
       delete mapMarkers[el.id];
     }
     return;
@@ -64,7 +142,9 @@ function addOrUpdateMarker(el) {
     const m = L.marker(pos, {
       icon: createMarkerIcon(el, selectedNodeId === el.id),
       draggable: false
-    }).addTo(geoMap);
+    });
+    if (markerClusterGroup) markerClusterGroup.addLayer(m);
+    else m.addTo(geoMap);
     m.elementId = el.id;
     m.on('click', e => {
       L.DomEvent.stopPropagation(e);
@@ -77,7 +157,7 @@ function addOrUpdateMarker(el) {
     m.on('contextmenu', e => {
       L.DomEvent.stopPropagation(e);
       ctxTargetId = el.id;
-      ctxTargetType = null;   // linha adicionada
+      ctxTargetType = null;
       showCtxMenu(e.originalEvent.clientX, e.originalEvent.clientY);
     });
     mapMarkers[el.id] = m;
@@ -85,21 +165,30 @@ function addOrUpdateMarker(el) {
 }
 
 function removeMarker(id){
-  if(mapMarkers[id]){geoMap.removeLayer(mapMarkers[id]);delete mapMarkers[id];}
+  if(mapMarkers[id]){
+    if(markerClusterGroup) markerClusterGroup.removeLayer(mapMarkers[id]);
+    else geoMap.removeLayer(mapMarkers[id]);
+    delete mapMarkers[id];
+  }
 }
 
 function refreshAllMarkers(){
-  // Remove markers for deleted elements
-  Object.keys(mapMarkers).forEach(id=>{
-    if(!DB.elements.find(e=>e.id==id)) removeMarker(id);
-  });
+  // Clear cluster group and rebuild
+  if(markerClusterGroup){
+    markerClusterGroup.clearLayers();
+    mapMarkers = {};
+  } else {
+    Object.keys(mapMarkers).forEach(id=>{
+      if(!DB.elements.find(e=>e.id==id)) removeMarker(id);
+    });
+  }
   DB.elements.forEach(el=>addOrUpdateMarker(el));
   applyVisibilityFilters();
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
 // CABLE POLYLINES ON MAP
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
 function drawCableOnMap(conn){
   // Remove existing
   removeCableFromMap(conn.id);
@@ -124,15 +213,15 @@ function drawCableOnMap(conn){
   }).addTo(geoMap);
 
   // Tooltip
-  let tooltipText = `<b>${fromEl.nome}</b> â†’ <b>${toEl.nome}</b><br><span style="color:${color}">â– </span> ${conn.fibra||'Cabo'} (${conn.cor||'â€”'})`;
-  if (conn.length) tooltipText += `<br>ðŸ“ ${conn.length}m`;
-  if (isBroken) tooltipText += `<br><span style="color:var(--red)">ðŸ’” ROMPIDO</span>`;
+  let tooltipText = `<b>${esc(fromEl.nome)}</b> → <b>${esc(toEl.nome)}</b><br><span style="color:${color}">■</span> ${esc(conn.fibra||'Cabo')} (${esc(conn.cor||'—')})`;
+  if (conn.length) tooltipText += `<br>📏 ${conn.length}m`;
+  if (isBroken) tooltipText += `<br><span style="color:var(--red)">💔 ROMPIDO</span>`;
   poly.bindTooltip(tooltipText, {sticky:true, className:'leaflet-tooltip-cable'});
 
   poly.on('click', e=>{L.DomEvent.stopPropagation(e); showCablePanel(conn.id);});
   poly.on('contextmenu', e=>{
     L.DomEvent.stopPropagation(e);
-    // Mostrar menu de contexto especÃ­fico para cabos
+    // Mostrar menu de contexto específico para cabos
     ctxTargetId = conn.id;
     ctxTargetType = 'cable';
     showCtxMenu(e.originalEvent.clientX, e.originalEvent.clientY);
@@ -152,25 +241,45 @@ function refreshAllCables(){
   DB.connections.forEach(c=>drawCableOnMap(c));
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
 // MAP MODE & CABLE DRAWING
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
 function setMapMode(mode){
+  // Clear measure state when switching away from measure mode
+  if(mapMode==='measure' && mode!=='measure'){
+    clearMeasure();
+  }
   mapMode=mode;
   document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active','cable-active'));
   const btn=document.getElementById('mode-'+mode);
   if(btn) btn.classList.add(mode==='cable'?'cable-active':'active');
   document.getElementById('btn-cable').classList.toggle('btn-warn',mode==='cable');
-  geoMap.getContainer().style.cursor=mode==='place'?'crosshair':mode==='cable'?'cell':'grab';
+  if(mode==='measure'){
+    geoMap.getContainer().style.cursor='crosshair';
+  } else {
+    geoMap.getContainer().style.cursor=mode==='place'?'crosshair':mode==='cable'?'cell':'grab';
+  }
 
   const hint=document.getElementById('cable-waypoint-hint');
+  const measureDisp=document.getElementById('measure-display');
+  const floatBar=document.getElementById('cable-float-bar');
   if(mode==='cable'){
     hint.style.display='block';
+    if(floatBar) floatBar.style.display=cableState?'flex':'none';
+    if(measureDisp) measureDisp.style.display='none';
     if(!cableState){
       hint.textContent='Clique em um elemento para iniciar o cabo';
     }
+  } else if(mode==='measure'){
+    hint.style.display='none';
+    if(floatBar) floatBar.style.display='none';
+    if(measureDisp) measureDisp.style.display='block';
+    measureState={points:[], polyline:null, markers:[], tooltip:null, finished:false};
+    document.getElementById('measure-distance').textContent='0 m';
   } else {
     hint.style.display='none';
+    if(floatBar) floatBar.style.display='none';
+    if(measureDisp) measureDisp.style.display='none';
     if(mode!=='cable'&&cableState) clearCablePreview();
     cableState=null;
   }
@@ -188,7 +297,7 @@ function startCableModeWithSelection() {
       grupos[ct.grupo].push(ct);
     });
     sel.innerHTML = Object.entries(grupos).map(([g, items]) =>
-      `<optgroup label="â”€â”€ ${g} â”€â”€">${items.map(ct => `<option value="${ct.label}" data-fo="${ct.fo}">${ct.label}${ct.fo>0?' ('+ct.fo+'FO)':''}</option>`).join('')}</optgroup>`
+      `<optgroup label="── ${g} ──">${items.map(ct => `<option value="${ct.label}" data-fo="${ct.fo}">${ct.label}${ct.fo>0?' ('+ct.fo+'FO)':''}</option>`).join('')}</optgroup>`
     ).join('');
   }
   // Preencher grid de cores
@@ -210,7 +319,7 @@ function confirmCableTypeAndStart() {
   pendingCablePorta = document.getElementById('pre-cable-porta').value.trim();
   pendingCableObs = document.getElementById('pre-cable-obs').value.trim();
   closeModal('modal-select-cable');
-  // Inicia o modo cabo com os dados prÃ©-definidos
+  // Inicia o modo cabo com os dados pré-definidos
   startCableModeWithPreset(pendingCableType, pendingCableColor, pendingCablePorta, pendingCableObs);
 }
 
@@ -219,14 +328,123 @@ function startCableModeWithPreset(tipo, cor, porta, obs) {
   setMapMode('cable');
 }
 
+// ═══════════════════════════════════════════════════════
+// QUICK-ADD FROM MAP
+// ═══════════════════════════════════════════════════════
+let quickAddPopupTimer = null;
+
+function hideQuickAddPopup() {
+  const popup = document.getElementById('quick-add-popup');
+  if (popup) popup.remove();
+  if (quickAddPopupTimer) { clearTimeout(quickAddPopupTimer); quickAddPopupTimer = null; }
+}
+
+function showQuickAddPopup(lat, lng, x, y) {
+  hideQuickAddPopup();
+
+  const popup = document.createElement('div');
+  popup.id = 'quick-add-popup';
+  popup.style.left = x + 'px';
+  popup.style.top = y + 'px';
+  L.DomEvent.disableClickPropagation(popup);
+
+  const types = [
+    {tipo:'cliente', label:'Cliente'},
+    {tipo:'cto', label:'CTO'},
+    {tipo:'poste', label:'Poste'},
+    {tipo:'ceo', label:'CEO'},
+    {tipo:'splitter', label:'Splitter'},
+  ];
+
+  types.forEach(t => {
+    const tc = TYPE_CONFIG[t.tipo] || {color:'#888', label:t.label};
+    const btn = document.createElement('button');
+    btn.className = 'quick-add-btn';
+    btn.style.borderColor = tc.color + '44';
+    btn.style.color = tc.color;
+    btn.innerHTML = (ICONS[t.tipo] || '') + '<span>' + tc.label + '</span>';
+    btn.onmouseenter = () => { btn.style.background = tc.color + '22'; btn.style.borderColor = tc.color; };
+    btn.onmouseleave = () => { btn.style.background = 'transparent'; btn.style.borderColor = tc.color + '44'; };
+    btn.onclick = () => quickAddElement(t.tipo, lat, lng);
+    popup.appendChild(btn);
+  });
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'quick-add-close';
+  closeBtn.innerHTML = '×';
+  closeBtn.onclick = (ev) => { ev.stopPropagation(); hideQuickAddPopup(); };
+  popup.appendChild(closeBtn);
+
+  geoMap.getContainer().appendChild(popup);
+  quickAddPopupTimer = setTimeout(hideQuickAddPopup, 5000);
+}
+
+async function quickAddElement(tipo, lat, lng) {
+  hideQuickAddPopup();
+
+  const tc = TYPE_CONFIG[tipo] || {label:tipo};
+  const count = DB.elements.filter(e => e.tipo === tipo).length + 1;
+  const nome = tc.label + ' ' + count;
+
+  const created = await api('POST', papi('/elements'), {
+    nome, tipo, lat, lng, status: 'ativo'
+  });
+
+  if (!created || !created.id) return;
+
+  DB.elements.push(created);
+
+  if (tipo === 'dio') {
+    const dioId = 'DIO-' + count;
+    const cap = 24;
+    const dioPayload = {
+      id: dioId,
+      name: nome,
+      location: lat.toFixed(5) + ', ' + lng.toFixed(5),
+      capacity: cap,
+      ports: Array.from({length: cap}, (_, i) => ({num: i+1, status: 'livre', client: '', color: 'N/A'}))
+    };
+    const dioCreated = await api('POST', papi('/dios'), dioPayload);
+    if (dioCreated && !dioCreated.error) {
+      DB.dios = await api('GET', papi('/dios'));
+    }
+  }
+
+  addOrUpdateMarker(created);
+  if (nodesDS) {
+    nodesDS.add({
+      id: created.id,
+      label: created.nome,
+      shape: 'dot',
+      color: {
+        background: (TYPE_CONFIG[created.tipo]?.color || '#888') + '22',
+        border: TYPE_CONFIG[created.tipo]?.color || '#888'
+      },
+      font: {color: '#e8edf5', size: 12},
+      size: 18
+    });
+  }
+  updateStats();
+  renderSidebar();
+  renderTable();
+  if (tipo === 'dio') renderDioPanels();
+  toast('✅ ' + created.nome + ' adicionado no mapa!', 'success');
+}
+
 function handleMapClick(e){
+  hideCtxMenu();
+  hideQuickAddPopup();
   if(mapMode==='place'&&placeTargetId){
     placeElement(placeTargetId,e.latlng.lat,e.latlng.lng);
     return;
   }
+  if(mapMode==='measure'){
+    handleMeasureClick(e);
+    return;
+  }
   if(mapMode==='cable'){
     if(!cableState){
-      // Need to click on a marker â€” handled by marker click
+      // Need to click on a marker — handled by marker click
       return;
     }
     // Add waypoint
@@ -235,17 +453,167 @@ function handleMapClick(e){
     updateCablePreview();
     return;
   }
-  // Select mode â€” deselect
+  // Select mode — deselect only
   if(mapMode==='select'){
     selectedNodeId=null;closePanel();
     refreshAllMarkers();
   }
 }
 
+// ═══════════════════════════════════════════════════════
+// RIGHT-CLICK CATEGORY MENU
+// ═══════════════════════════════════════════════════════
+function showCategoryMenu(lat,lng,cx,cy){
+  hideQuickAddPopup();
+  hideCtxMenu();
+  const popup=document.createElement('div');
+  popup.id='quick-add-popup';
+  // Calculate position with offset, clamp to screen edges
+  let x = cx + 12, y = cy + 12;
+  const maxX = window.innerWidth - 200;
+  const maxY = window.innerHeight - 300;
+  if (x > maxX) x = cx - 200;
+  if (y > maxY) y = cy - 300;
+  popup.style.left=x+'px';popup.style.top=y+'px';
+  popup.style.flexDirection='column';popup.style.gap='4px';
+  popup.style.padding='6px';popup.style.minWidth='160px';
+  L.DomEvent.disableClickPropagation(popup);
+
+  const cats=[
+    {label:'Cabos',color:'#ff9100',items:[
+      {label:'Iniciar Cabo...',icon:'🔌',action:()=>{hideQuickAddPopup();startCableModeWithSelection();}}
+    ]},
+    {label:'Rua',color:'#00e676',items:[]},
+    {label:'Core',color:'#0080ff',items:[]},
+  ];
+
+  Object.entries(TYPE_CONFIG).filter(([k,v])=>v.cat==='rua').forEach(([tipo,tc])=>{
+    cats[1].items.push({label:tc.label,icon:ICONS[tipo]||'',action:()=>quickAddElement(tipo,lat,lng)});
+  });
+  Object.entries(TYPE_CONFIG).filter(([k,v])=>v.cat==='core').forEach(([tipo,tc])=>{
+    cats[2].items.push({label:tc.label,icon:ICONS[tipo]||'',action:()=>quickAddElement(tipo,lat,lng)});
+  });
+
+  cats.forEach((cat,i)=>{
+    const row=document.createElement('div');
+    row.style.cssText='position:relative;display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;color:'+cat.color+';transition:background .1s';
+    row.innerHTML='<span style="flex:1;text-transform:uppercase;letter-spacing:1px;font-size:10px">'+cat.label+'</span><span style="font-size:9px;opacity:.5">▶</span>';
+
+    const sub=document.createElement('div');
+    sub.style.cssText='position:absolute;left:100%;top:-4px;background:rgba(8,12,20,.96);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:5px;display:none;min-width:150px;z-index:1001;backdrop-filter:blur(8px);box-shadow:0 8px 24px rgba(0,0,0,.4)';
+    
+    cat.items.forEach(item=>{
+      const btn=document.createElement('button');
+      btn.style.cssText='display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;border:none;background:transparent;color:var(--text);cursor:pointer;font-size:11px;font-weight:600;transition:background .1s;width:100%;text-align:left;font-family:inherit;white-space:nowrap';
+      btn.innerHTML=item.icon+'<span>'+item.label+'</span>';
+      btn.onmouseenter=()=>btn.style.background=cat.color+'18';
+      btn.onmouseleave=()=>btn.style.background='transparent';
+      btn.onclick=(ev)=>{ev.stopPropagation();item.action();};
+      sub.appendChild(btn);
+    });
+
+    // Show submenu on hover
+    row.onmouseenter=()=>{sub.style.display='block';row.style.background=cat.color+'12';};
+    row.onmouseleave=(e)=>{setTimeout(()=>{if(!sub.matches(':hover')){sub.style.display='none';row.style.background='transparent';}},100);};
+    sub.onmouseenter=()=>sub.style.display='block';
+    sub.onmouseleave=()=>{sub.style.display='none';row.style.background='transparent';};
+
+    row.appendChild(sub);
+    popup.appendChild(row);
+  });
+
+  const close=document.createElement('button');
+  close.style.cssText='display:flex;align-items:center;justify-content:center;gap:6px;padding:5px 10px;border-radius:6px;border:none;background:var(--surface3);color:var(--text3);cursor:pointer;font-size:10px;margin-top:4px;transition:background .1s;width:100%;font-family:inherit';
+  close.textContent='✕ Fechar';
+  close.onmouseenter=()=>close.style.background='var(--red)';close.style.color='#fff';
+  close.onmouseleave=()=>close.style.background='var(--surface3)';close.style.color='var(--text3)';
+  close.onclick=()=>hideQuickAddPopup();
+  popup.appendChild(close);
+
+  geoMap.getContainer().appendChild(popup);
+}
+
+function _catHeader(text,color){
+  const h=document.createElement('div');
+  h.textContent=text;
+  h.style.cssText='font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;padding:6px 8px 2px;color:'+color+';opacity:.8;pointer-events:none';
+  return h;
+}
+
+function _catItem(text,color){
+  const b=document.createElement('button');
+  b.style.cssText='display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;border:none;background:transparent;color:var(--text);cursor:pointer;font-size:11px;font-weight:600;transition:all .1s;width:100%;text-align:left;font-family:inherit';
+  b.onmouseenter=()=>{b.background=b.style.background;b.style.background=color+'18'};
+  b.onmouseleave=()=>{b.style.background=b.background||'transparent'};
+  b.innerHTML='<span style="flex:1">'+text+'</span>';
+  return b;
+}
+
 function handleMapMouseMove(e){
   if(mapMode==='cable'&&cableState&&!cableState.complete){
     // Update live preview line end
     updateCablePreviewLive(e.latlng);
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// MEASURE DISTANCE TOOL
+// ═══════════════════════════════════════════════════════
+function handleMeasureClick(e){
+  if(measureState.finished) return;
+  L.DomEvent.stopPropagation(e);
+  const pt=e.latlng;
+  measureState.points.push(pt);
+
+  const marker=L.circleMarker(pt,{radius:4,color:'#ff9100',fillColor:'#ff9100',fillOpacity:0.8,weight:2}).addTo(geoMap);
+  measureState.markers.push(marker);
+
+  if(measureState.points.length>=2){
+    if(measureState.polyline) geoMap.removeLayer(measureState.polyline);
+    const pts=measureState.points.map(p=>[p.lat,p.lng]);
+    measureState.polyline=L.polyline(pts,{color:'#ff9100',weight:3,opacity:0.85,dashArray:'8,6'}).addTo(geoMap);
+  }
+
+  let totalDist=0;
+  for(let i=0;i<measureState.points.length-1;i++){
+    totalDist+=haversineDistance(
+      measureState.points[i].lat,measureState.points[i].lng,
+      measureState.points[i+1].lat,measureState.points[i+1].lng
+    );
+  }
+  const distText=totalDist>=1000
+    ?(totalDist/1000).toFixed(2)+' km'
+    :Math.round(totalDist)+' m';
+  document.getElementById('measure-distance').textContent=distText;
+
+  if(measureState.tooltip) geoMap.closeTooltip(measureState.tooltip);
+  if(measureState.markers.length>0){
+    const lastMarker=measureState.markers[measureState.markers.length-1];
+    measureState.tooltip=lastMarker.bindTooltip(distText,{permanent:true,direction:'top',offset:[0,-8],className:'measure-tooltip'}).openTooltip();
+  }
+}
+
+function clearMeasure(){
+  measureState.points.forEach((p,i)=>{
+    if(measureState.markers[i]) geoMap.removeLayer(measureState.markers[i]);
+  });
+  if(measureState.polyline) geoMap.removeLayer(measureState.polyline);
+  if(measureState.tooltip) geoMap.closeTooltip(measureState.tooltip);
+  measureState={points:[],polyline:null,markers:[],tooltip:null,finished:false};
+  document.getElementById('measure-distance').textContent='0 m';
+}
+
+function finishMeasure(){
+  measureState.finished=true;
+  const display=document.getElementById('measure-display');
+  if(display) display.style.opacity='0.85';
+  toast('📏 Medição concluída! Distância total: '+document.getElementById('measure-distance').textContent,'success');
+}
+
+function handleMeasureDblClick(e){
+  if(mapMode==='measure'&&!measureState.finished){
+    L.DomEvent.stopPropagation(e);
+    finishMeasure();
   }
 }
 
@@ -278,20 +646,32 @@ function updateCablePreview(){
 
 function updateCableHint(){
   const hint=document.getElementById('cable-waypoint-hint');
-  if(!cableState){hint.textContent='Clique em um elemento para iniciar o cabo';return;}
+  const bar=document.getElementById('cable-float-bar');
+  if(!cableState){hint.textContent='Clique em um elemento para iniciar o cabo';if(bar)bar.style.display='none';return;}
+  const fromEl=DB.elements.find(e=>e.id===cableState.fromId);
+  const dist=cableState.waypoints.length>1?calculateRouteDistance(cableState.waypoints):0;
+  const distStr=dist>0?` · ${(dist/1000).toFixed(2)} km`:'';
+  if(bar){
+    bar.style.display='flex';
+    const info=bar.querySelector('#cable-float-info');
+    if(info) info.textContent=`${esc(fromEl?.nome||'?')} · ${cableState.waypoints.length} pontos${distStr}`;
+  }
   if(!cableState.toId){
-    hint.textContent=`Origem: ${DB.elements.find(e=>e.id===cableState.fromId)?.nome||'?'} Â· ${cableState.waypoints.length} pontos Â· Clique para adicionar pontos no caminho Â· Clique em outro elemento para finalizar`;
+    hint.textContent=`Origem: ${fromEl?.nome||'?'} · ${cableState.waypoints.length} pontos · Clique para adicionar pontos no caminho · Clique em outro elemento para finalizar`;
   }
 }
 
 function handleMarkerClick(id,e){
+  if(mapMode==='measure'){
+    return;
+  }
   if(mapMode==='cable'){
     if(!cableState){
       // Start cable from this element
       const el=DB.elements.find(e2=>e2.id===id);
-      if(!el?.lat){toast('âš ï¸ Elemento sem coordenadas no mapa','error');return;}
+      if(!el?.lat){toast('⚠️ Elemento sem coordenadas no mapa','error');return;}
       cableState={fromId:id,toId:null,waypoints:[],previewLine:null,complete:false};
-      // Aplicar dados prÃ©-selecionados
+      // Aplicar dados pré-selecionados
       if(window.presetCableData){
         cableState.presetTipo = window.presetCableData.tipo;
         cableState.presetCor = window.presetCableData.cor;
@@ -308,13 +688,17 @@ function handleMarkerClick(id,e){
       cableState.toId=id;
       cableState.complete=true;
       if(previewLiveLine){geoMap.removeLayer(previewLiveLine);previewLiveLine=null;}
-      openCableModal();
+      if(_redrawCableId){
+        awaitFinishRedraw();
+      } else {
+        openCableModal();
+      }
     }
     return;
   }
   // Select mode
   selectedNodeId=id;
-  showPanel(id);
+  showElementPopup(id);
   refreshAllMarkers();
 }
 
@@ -330,7 +714,7 @@ async function placeElement(id,lat,lng){
   await api('PUT',papi(`/elements/${id}`),el);
   addOrUpdateMarker(el);
   refreshAllCables();
-  toast(`ðŸ“ ${el.nome} posicionado`,'success');
+  toast(`📍 ${el.nome} posicionado`,'success');
   placeTargetId=null;
   setMapMode('select');
 }
@@ -341,33 +725,279 @@ function fitMapToBounds(){
   else geoMap.setView([-16.8225,-49.245],13);
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
+// MAP STATUS FILTERS
+// ═══════════════════════════════════════════════════════
+function filterMapByStatus(){
+  const checkboxes = document.querySelectorAll('#map-status-filters input[type="checkbox"]');
+  const activeStatuses = Array.from(checkboxes).filter(cb=>cb.checked).map(cb=>cb.dataset.status);
+  Object.entries(mapMarkers).forEach(([id, marker])=>{
+    const el=DB.elements.find(item=>String(item.id)===String(id));
+    if(!el || !marker?.setOpacity) return;
+    const visible = activeStatuses.includes(el.status);
+    marker.setOpacity(visible?1:0);
+    if(visible){
+      if(markerClusterGroup && !markerClusterGroup.hasLayer(marker)) markerClusterGroup.addLayer(marker);
+    } else {
+      if(markerClusterGroup && markerClusterGroup.hasLayer(marker)) markerClusterGroup.removeLayer(marker);
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// MAP LEGEND
+// ═══════════════════════════════════════════════════════
+function populateMapLegend(){
+  const container=document.getElementById('map-legend-content');
+  if(!container) return;
+  container.innerHTML=Object.entries(TYPE_CONFIG).map(([tipo,tc])=>`
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+      <div style="width:10px;height:10px;border-radius:2px;background:${tc.color};flex-shrink:0"></div>
+      <span style="color:var(--text2)">${tc.label}</span>
+    </div>
+  `).join('');
+}
+
+// ═══════════════════════════════════════════════════════
+// MAP LAYER TOGGLE
+// ═══════════════════════════════════════════════════════
+function toggleMapLayer(){
+  const select=document.getElementById('map-layer-select');
+  if(!select) return;
+  const current=select.value;
+  const next=current==='osm'?'satellite':'osm';
+  select.value=next;
+  changeMapLayer(next);
+  const btn=document.getElementById('map-layer-toggle');
+  if(btn) btn.textContent=next==='satellite'?'🗺️ Mapa':'🛰️ Satélite';
+}
+
+// ═══════════════════════════════════════════════════════
+// GLOBAL SEARCH DROPDOWN + CENTER MAP
+// ═══════════════════════════════════════════════════════
+let searchDropdownTimer=null;
+
+function handleGlobalSearchInput(value){
+  handleGlobalSearch(value);
+  const box=document.getElementById('global-search-results');
+  if(!box) return;
+  if(!value || value.trim().length<2){
+    box.style.display='none';
+    return;
+  }
+  const term=normalizeText(value);
+  const matches=DB.elements.filter(el=>{
+    const haystack=[el.nome,el.tipo,el.status,el.modelo,el.endereco,el.detalhes,el.id].map(normalizeText).join(' ');
+    return haystack.includes(term);
+  }).slice(0,8);
+  if(matches.length===0){
+    box.style.display='none';
+    return;
+  }
+  box.innerHTML=matches.map(el=>{
+    const tc=TYPE_CONFIG[el.tipo]||{};
+    const hasCoords=el.lat&&el.lng;
+    return `<div onclick="focusSearchResult(${el.id})" style="padding:8px 12px;cursor:pointer;font-size:11px;border-bottom:1px solid var(--border);transition:background .1s;display:flex;align-items:center;gap:8px" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+      <span style="color:${tc.color||'var(--text3)'}">${ICONS[el.tipo]||''}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(el.nome)}</div>
+        <div style="font-size:10px;color:var(--text3)">${tc.label||esc(el.tipo)} · ${esc(el.status)}${hasCoords?' · 📍 '+el.lat.toFixed(5)+', '+el.lng.toFixed(5):''}</div>
+      </div>
+    </div>`;
+  }).join('');
+  box.style.display='block';
+  if(searchDropdownTimer) clearTimeout(searchDropdownTimer);
+  searchDropdownTimer=setTimeout(()=>{box.style.display='none';},8000);
+}
+
+function focusSearchResult(id){
+  const box=document.getElementById('global-search-results');
+  if(box) box.style.display='none';
+  const el=DB.elements.find(e=>e.id===id);
+  if(!el) return;
+  selectedNodeId=id;
+  if(el.lat&&el.lng){
+    switchTab('geomap');
+    geoMap.setView([el.lat,el.lng],16,{animate:true});
+    refreshAllMarkers();
+    highlightMarkerTemporarily(id);
+  } else {
+    switchTab('topology');
+    if(network) network.focus(id,{animation:{duration:500,easingFunction:'easeInOutCubic'},scale:1.2});
+    refreshAllMarkers();
+  }
+}
+
+function highlightMarkerTemporarily(id){
+  const marker=mapMarkers[id];
+  if(!marker) return;
+  const el=DB.elements.find(e=>e.id===id);
+  if(!el) return;
+  const originalIcon=marker.getIcon();
+  const pulseHtml=`<div style="width:36px;height:36px;border-radius:50%;background:rgba(30,167,215,.25);border:3px solid var(--accent);display:flex;align-items:center;justify-content:center;animation:pulse 1s infinite;color:#fff;position:relative">
+    ${(ICONS[el.tipo]||'').replace('width="16"','width="14"').replace('height="16"','height="14"')}
+  </div>`;
+  marker.setIcon(L.divIcon({html:pulseHtml,className:'map-node-marker',iconSize:[36,36],iconAnchor:[18,18]}));
+  setTimeout(()=>{
+    if(mapMarkers[id]) marker.setIcon(originalIcon);
+  },3000);
+}
+
+let traceHighlightLayer = null;
+let traceHighlightTimers = [];
+
+function highlightPathOnMap(pathData){
+  if(!pathData || !pathData.nodes) return;
+  switchTab('geomap');
+  if(traceHighlightLayer){
+    geoMap.removeLayer(traceHighlightLayer);
+    traceHighlightLayer = null;
+  }
+  traceHighlightTimers.forEach(t=>clearTimeout(t));
+  traceHighlightTimers = [];
+
+  const nodes = pathData.nodes;
+  const coords = [];
+  nodes.forEach(node=>{
+    const el = DB.elements.find(e=>String(e.id)===String(node.id));
+    if(el && el.lat && el.lng) coords.push([el.lat, el.lng]);
+  });
+
+  if(coords.length > 1){
+    traceHighlightLayer = L.polyline(coords, {
+      color: 'var(--accent)',
+      weight: 4,
+      opacity: 0.9,
+      dashArray: '10,8',
+      lineCap: 'round',
+  }).addTo(geoMap);
+
+  L.GridLayer.prototype._updateOpacity = function(){
+    var t;
+    for(t in this._tiles){
+      var s=this._tiles[t];
+      if(s.current&&s.loaded){s.active=true;L.DomUtil.setOpacity(s.el,1);}
+    }
+  };
+  L.GridLayer.prototype._onOpaqueTile=L.Util.falseFn;
+
+
+    geoMap.fitBounds(traceHighlightLayer.getBounds(), {padding:[60,60], animate:true});
+  }
+
+  nodes.forEach((node, idx)=>{
+    const timer = setTimeout(()=>{
+      highlightMarkerTemporarily(node.id);
+    }, idx * 400);
+    traceHighlightTimers.push(timer);
+  });
+
+  const resetTimer = setTimeout(()=>{
+    if(traceHighlightLayer){
+      geoMap.removeLayer(traceHighlightLayer);
+      traceHighlightLayer = null;
+    }
+    traceHighlightTimers = [];
+  }, 10000);
+  traceHighlightTimers.push(resetTimer);
+}
+
+function ctxCreateIncident(){
+  if(!ctxTargetId) return;
+  hideCtxMenu();
+  openIncidentModal(null, ctxTargetId);
+}
+
+// Close search dropdown on outside click
+document.addEventListener('click',e=>{
+  if(!e.target.closest('.topbar-search'))
+    document.getElementById('global-search-results').style.display='none';
+});
+
+// ═══════════════════════════════════════════════════════
 // ADDRESS / CEP SEARCH
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
+
+let searchTimer = null;
+
+function debouncedSearch() {
+  if (searchTimer) clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    const input = document.getElementById('addr-search-input');
+    const q = input.value.trim();
+    if (q.length < 3) {
+      document.getElementById('addr-results').style.display = 'none';
+      return;
+    }
+    searchAddress();
+  }, 500);
+}
+
 async function searchAddress(){
   const q=document.getElementById('addr-search-input').value.trim();
   if(!q) return;
-  // Try ViaCEP if it looks like a CEP
   const cep=q.replace(/\D/g,'');
   if(cep.length===8){
     try{
       const r=await fetch(`https://viacep.com.br/ws/${cep}/json/`);
       const d=await r.json();
-      if(!d.erro){
-        const addr=`${d.logradouro||''}, ${d.bairro||''}, ${d.localidade} - ${d.uf}`;
-        const nom=await nominatimSearch(addr);
-        if(nom){showAddrResults([{display:addr,...nom}]);return;}
+      if(d.erro){showAddrResults([],'CEP nao encontrado');return;}
+
+      // Build address
+      const addr=`${d.logradouro||''}, ${d.bairro||''}, ${d.localidade} - ${d.uf}`;
+
+      // Check cache first
+      const cached = await api('POST','/api/address-cache/lookup',{
+        cep, logradouro: d.logradouro||''
+      });
+      if(cached && cached.latitude && cached.longitude){
+        showAddrResults([{display:addr,lat:cached.latitude,lng:cached.longitude,precision:'MANUAL'}]);
+        return;
       }
-    }catch(e){}
+
+      // Try Nominatim full address
+      const nom=await nominatimSearch(addr);
+      if(nom){
+        showAddrResults([{display:addr,...nom,precision:'EXACT'}]);
+        return;
+      }
+
+      // Try neighborhood + city
+      const bairro=await nominatimSearch(`${d.bairro}, ${d.localidade} - ${d.uf}`);
+      if(bairro){
+        showAddrResults([{display:addr,...bairro,precision:'APPROXIMATE'}]);
+        return;
+      }
+
+      // City center fallback - show as APPROXIMATE
+      const cidade=await nominatimSearch(`${d.localidade}, ${d.uf}`);
+      if(cidade){
+        showAddrResults([{display:addr,...cidade,precision:'APPROXIMATE'}]);
+        return;
+      }
+
+      // Nothing found - allow manual placement
+      _pendingCepData = {cep, logradouro:d.logradouro||'', bairro:d.bairro||'', localidade:d.localidade, uf:d.uf};
+      showAddrResults([{display:addr,lat:null,lng:null,precision:'NOT_FOUND'}]);
+    }catch(e){showAddrResults([],'Erro ao consultar CEP');}
+    return;
   }
-  // Nominatim geocode
+  if(cep.length>0&&cep.length<8){
+    showAddrResults([],'CEP invalido. Digite 8 digitos');
+    return;
+  }
   const results=await nominatimSearchMulti(q);
   showAddrResults(results);
 }
 
+let _nominatimLastCall=0;
 async function nominatimSearch(q){
+  const now=Date.now();const gap=1100-(now-_nominatimLastCall);
+  if(gap>0) await new Promise(r=>setTimeout(r,gap));
+  _nominatimLastCall=Date.now();
   try{
-    const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1&countrycodes=br`,{headers:{'Accept-Language':'pt-BR'}});
+    const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1&countrycodes=br`,{headers:{'User-Agent':'NetMapPro/1.0','Accept-Language':'pt-BR'}});
+    if(r.status===429){toast('⚠️ Limite de requisições Nominatim. Tente em 1 min.','warn');return null;}
     const d=await r.json();
     if(d.length>0) return {lat:parseFloat(d[0].lat),lng:parseFloat(d[0].lon),display:d[0].display_name};
   }catch(e){}
@@ -375,35 +1005,71 @@ async function nominatimSearch(q){
 }
 
 async function nominatimSearchMulti(q){
+  const now=Date.now();const gap=1100-(now-_nominatimLastCall);
+  if(gap>0) await new Promise(r=>setTimeout(r,gap));
+  _nominatimLastCall=Date.now();
   try{
-    const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=6&countrycodes=br`,{headers:{'Accept-Language':'pt-BR'}});
+    const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=6&countrycodes=br`,{headers:{'User-Agent':'NetMapPro/1.0','Accept-Language':'pt-BR'}});
+    if(r.status===429){toast('⚠️ Limite de requisições Nominatim. Tente em 1 min.','warn');return[];}
     const d=await r.json();
     return d.map(x=>({lat:parseFloat(x.lat),lng:parseFloat(x.lon),display:x.display_name}));
   }catch(e){}
   return [];
 }
 
-function showAddrResults(results){
+function showAddrResults(results, msg){
   const box=document.getElementById('addr-results');
   if(!results||results.length===0){
-    box.innerHTML='<div style="padding:12px;font-size:12px;color:var(--text3)">Nenhum resultado encontrado.</div>';
+    box.innerHTML='<div style="padding:12px;font-size:12px;color:var(--text3)">'+(msg||'Nenhum resultado encontrado.')+'</div>';
     box.style.display='block';
     setTimeout(()=>box.style.display='none',3000);
     return;
   }
-  box.innerHTML=results.map((r,i)=>`
-    <div onclick="goToAddr(${r.lat},${r.lng})" style="padding:9px 13px;cursor:pointer;font-size:11px;border-bottom:1px solid var(--border);transition:background .1s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
-      <div style="font-weight:600;color:var(--text)">ðŸ“ ${r.display.split(',').slice(0,3).join(',')}</div>
-      <div style="font-size:10px;color:var(--text3);margin-top:2px">${r.lat.toFixed(5)}, ${r.lng.toFixed(5)}</div>
-    </div>`).join('');
+  box.innerHTML=results.map((r,i)=>{
+    const precision=r.precision||'';
+    const colors={'EXACT':'var(--green)','APPROXIMATE':'var(--orange)','MANUAL':'#8b5cf6','NOT_FOUND':'var(--text3)'};
+    const labels={'EXACT':'✅ Coordenada exata','APPROXIMATE':'⚠️ Localização aproximada','MANUAL':'📌 Coordenada manual salva','NOT_FOUND':'📍 Endereço sem coordenadas'};
+    const label=labels[precision]||'';
+    const badge=label?`<span style="font-size:9px;color:${colors[precision]||'var(--text3)'};display:block;margin-top:2px">${label}</span>`:'';
+    const coords=r.lat?`${r.lat.toFixed(5)}, ${r.lng.toFixed(5)}`:'';
+    const manualBtn=!r.lat?`<button class="btn-warn" style="margin-top:6px;padding:3px 8px;font-size:10px;width:100%;border-radius:5px" onclick="startCepManualPlace()">\ud83d\udccd Clicar no mapa para posicionar</button>`:'';
+    return `<div onclick="${r.lat?'goToAddr('+r.lat+','+r.lng+')':'javascript:void(0)'}" style="padding:9px 13px;cursor:${r.lat?'pointer':'default'};font-size:11px;border-bottom:1px solid var(--border);transition:background .1s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+      <div style="font-weight:600;color:var(--text)">\ud83d\udccd ${esc(r.display.split(',').slice(0,3).join(','))}</div>
+      ${badge}
+      <div style="font-size:10px;color:var(--text3);margin-top:2px">${coords}</div>
+      ${manualBtn}
+    </div>`;
+  }).join('');
   box.style.display='block';
 }
 
+let _pendingCepData = null;
+
+function startCepManualPlace() {
+  if (!_pendingCepData) return;
+  const d = _pendingCepData;
+  hideQuickAddPopup();
+  setMapMode('select');
+  toast('\ud83d\udccd Clique no mapa para posicionar este endereco','success');
+  geoMap.once('click', async function(e) {
+    const lat = e.latlng.lat;
+    const lng = e.latlng.lng;
+    await api('POST', '/api/address-cache/save', {
+      cep: d.cep, logradouro: d.logradouro||'', bairro: d.bairro||'',
+      cidade: d.localidade, uf: d.uf, lat, lng
+    });
+    toast('\u2705 Coordenada salva para este CEP!','success');
+    goToAddr(lat, lng);
+    document.getElementById('addr-results').style.display='none';
+  });
+}
+
 function goToAddr(lat,lng){
+  if(!lat||!lng){document.getElementById('addr-results').style.display='none';return;}
   geoMap.setView([lat,lng],17,{animate:true});
   // Drop a temporary pin
   const pin=L.marker([lat,lng],{icon:L.divIcon({
-    html:`<div style="width:28px;height:28px;border-radius:50%;background:rgba(0,200,255,.25);border:2px solid var(--accent);display:flex;align-items:center;justify-content:center;animation:pulse 1s infinite">ðŸ“</div>`,
+    html:`<div style="width:28px;height:28px;border-radius:50%;background:rgba(0,200,255,.25);border:2px solid var(--accent);display:flex;align-items:center;justify-content:center;animation:pulse 1s infinite">📍</div>`,
     className:'',iconSize:[28,28],iconAnchor:[14,14]
   })}).addTo(geoMap);
   setTimeout(()=>geoMap.removeLayer(pin),5000);
@@ -417,9 +1083,9 @@ document.addEventListener('click',e=>{
     document.getElementById('addr-results').style.display='none';
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
 // REPOSITION ELEMENT (drag after placement)
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
 let repositionTargetId=null;
 function startRepositionMode(id){
   repositionTargetId=id;
@@ -433,19 +1099,19 @@ function startRepositionMode(id){
       await placeElement(id,ll.lat,ll.lng);
       m.dragging.disable();
       repositionTargetId=null;
-      toast('ðŸ“ Reposicionado!','success');
+      toast('📍 Reposicionado!','success');
     });
-    toast(`â†• Arraste o marcador de "${el?.nome}" para nova posiÃ§Ã£o`,'success');
+    toast(`↕ Arraste o marcador de "${el?.nome}" para nova posição`,'success');
   } else {
-    // Element has no marker yet â€” use place mode
+    // Element has no marker yet — use place mode
     startPlaceMode(id);
   }
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
 // CEO FUSION MAP
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// FUSION MAP â€” CEO + CTO
+// ═══════════════════════════════════════════════════════
+// FUSION MAP — CEO + CTO
 // fusionState.data[connId].fibers[i] = {n, fusedTo:{connId,fiberN}|null, sangria:bool, splitter:bool, obs}
 let fusionState={nodeId:null, nodeType:null, data:{}}; // nodeId = CEO or CTO id
 
@@ -481,15 +1147,15 @@ function openFusionMap(nodeId){
   const totalSangria=Object.values(fusionState.data).reduce((s,cd)=>s+(cd.fibers||[]).filter(f=>f&&f.sangria).length,0);
   const totalSplitter=isCTO?Object.values(fusionState.data).reduce((s,cd)=>s+(cd.fibers||[]).filter(f=>f&&f.splitter).length,0):0;
 
-  document.getElementById('fusion-title').textContent=`ðŸ”€ Mapa de FusÃ£o â€” ${el.nome}`;
+  document.getElementById('fusion-title').textContent=`🔀 Mapa de Fusão — ${el.nome}`;
   const body=document.getElementById('fusion-body');
 
   if(allConns.length===0){
     body.innerHTML=`
       <div style="text-align:center;padding:40px;color:var(--text3)">
-        <div style="font-size:32px;margin-bottom:12px">ðŸ”Œ</div>
+        <div style="font-size:32px;margin-bottom:12px">🔌</div>
         <div style="font-size:14px;font-weight:600">Nenhum cabo conectado a este ${isCTO?'CTO':'CEO'}</div>
-        <div style="font-size:11px;margin-top:6px">Trace cabos para configurar as fusÃµes.</div>
+        <div style="font-size:11px;margin-top:6px">Trace cabos para configurar as fusões.</div>
       </div>`;
     openModal('modal-fusion');
     return;
@@ -501,8 +1167,8 @@ function openFusionMap(nodeId){
     <div style="display:flex;gap:1px;background:var(--border);border-radius:8px;overflow:hidden;margin-bottom:14px">
       <div style="flex:2;background:var(--surface2);padding:9px 14px">
         <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:1px">${typeLabel}</div>
-        <div style="font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${el.nome}</div>
-        <div style="font-size:10px;color:var(--text2)">${el.endereco||'â€”'}</div>
+        <div style="font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(el.nome)}</div>
+        <div style="font-size:10px;color:var(--text2)">${esc(el.endereco||'—')}</div>
       </div>
       <div style="flex:1;background:var(--surface2);padding:9px 14px;text-align:center">
         <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:1px">Cabos</div>
@@ -529,12 +1195,12 @@ function openFusionMap(nodeId){
 
     <!-- Instruction hint -->
     <div id="fusion-hint" style="display:flex;align-items:center;gap:8px;background:rgba(0,200,255,.06);border:1px solid rgba(0,200,255,.18);border-radius:7px;padding:8px 12px;font-size:11px;color:var(--text2);margin-bottom:12px">
-      <span style="font-size:16px">ðŸ‘†</span>
+      <span style="font-size:16px">👆</span>
       <span>
-        <strong style="color:var(--yellow)">Clique esquerdo</strong> em fibra livre â†’ seleciona para fundir com outra.
-        <strong style="color:var(--purple)">BotÃ£o [S]</strong> â†’ marcar como <em>sangria</em> (cabo passa pelo elemento).
-        ${isCTO?`<strong style="color:var(--orange)">BotÃ£o [SP]</strong> â†’ vai ao <em>splitter da CTO</em>.`:''}
-        <strong style="color:var(--red)">Clique direito</strong> em fibra marcada â†’ remover.
+        <strong style="color:var(--yellow)">Clique esquerdo</strong> em fibra livre → seleciona para fundir com outra.
+        <strong style="color:var(--purple)">Botão [S]</strong> → marcar como <em>sangria</em> (cabo passa pelo elemento).
+        ${isCTO?`<strong style="color:var(--orange)">Botão [SP]</strong> → vai ao <em>splitter da CTO</em>.`:''}
+        <strong style="color:var(--red)">Clique direito</strong> em fibra marcada → remover.
       </span>
     </div>
 
@@ -559,7 +1225,7 @@ function renderCableBlock(c, nodeId){
   const sangriaCount=(cd.fibers||[]).filter(f=>f&&f.sangria).length;
   const splitterCount=isCTO?(cd.fibers||[]).filter(f=>f&&f.splitter).length:0;
   const usedCount=fusedCount+sangriaCount+splitterCount;
-  const dir=isIn?'â†™ Entrada':'SaÃ­da â†—';
+  const dir=isIn?'↙ Entrada':'Saída ↗';
   const pct=fo>0?Math.round(usedCount/fo*100):0;
   const barColor=pct===100?'var(--green)':pct>0?'var(--yellow)':'var(--border2)';
 
@@ -567,13 +1233,13 @@ function renderCableBlock(c, nodeId){
     <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:${fc}0e;cursor:pointer;border-bottom:1px solid ${fc}33" onclick="toggleFusionBlock(${c.id})">
       <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
         <div style="width:14px;height:14px;border-radius:50%;background:${fc};box-shadow:0 0 6px ${fc}88"></div>
-        <span style="font-size:9px;font-weight:700;color:${fc};font-family:'Courier New',monospace">${c.cor||'â€”'}</span>
+        <span style="font-size:9px;font-weight:700;color:${fc};font-family:'Courier New',monospace">${esc(c.cor||'—')}</span>
       </div>
       <div style="flex:1;min-width:0">
         <div style="font-size:12px;font-weight:700;color:${tc.color||'var(--text)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-          <span style="font-size:10px;color:var(--text3);font-weight:400">${dir}</span>  ${otherEl?.nome||'Sem conexÃ£o'}
+          <span style="font-size:10px;color:var(--text3);font-weight:400">${dir}</span>  ${esc(otherEl?.nome||'Sem conexão')}
         </div>
-        <div style="font-size:9px;color:var(--text3);margin-top:1px;font-family:'Courier New',monospace">${c.fibra||'â€”'}${c.porta&&c.porta!=='â€”'?' Â· porta '+c.porta:''}</div>
+        <div style="font-size:9px;color:var(--text3);margin-top:1px;font-family:'Courier New',monospace">${esc(c.fibra||'—')}${c.porta&&c.porta!=='—'?' · porta '+esc(c.porta):''} · ${Math.ceil(fo/getFibersPerTube(c))} tubos × ${getFibersPerTube(c)} fibras</div>
       </div>
       <div style="flex-shrink:0;text-align:right">
         <div style="font-size:11px;font-weight:700;color:${fc}" id="fo-count-${c.id}">${usedCount}<span style="color:var(--text3);font-weight:400">/${fo}</span> FO</div>
@@ -581,57 +1247,90 @@ function renderCableBlock(c, nodeId){
           <div id="fo-bar-${c.id}" style="width:${pct}%;height:100%;background:${barColor};border-radius:2px;transition:width .3s"></div>
         </div>
       </div>
-      <span style="font-size:12px;color:var(--text3);flex-shrink:0" id="fusion-toggle-${c.id}">â–¼</span>
+      <span style="font-size:12px;color:var(--text3);flex-shrink:0" id="fusion-toggle-${c.id}">▼</span>
     </div>
     <div id="fusion-fibers-${c.id}">
-      ${renderFiberRows(c.id, fo, cd)}
+      ${renderTubes(c.id, fo, cd, c)}
     </div>
   </div>`;
 }
 
-function renderFiberRows(connId, fo, cd){
-  if(fo===0) return `<div style="padding:12px;font-size:11px;color:var(--text3)">Cabo elÃ©trico â€” sem fibras Ã³pticas.</div>`;
+function renderTubes(connId, fo, cd, cable){
+  if(fo===0) return `<div style="padding:12px;font-size:11px;color:var(--text3)">Cabo elétrico — sem fibras ópticas.</div>`;
   const isCTO=fusionState.nodeType==='cto';
-  const fibers=cd.fibers||[];
-  let rows='';
+  const fpt=getFibersPerTube(cable);
+  const tubeCount=Math.ceil(fo/fpt);
+  const fibersData=cd.fibers||[];
+  let html='';
+  for(let t=0;t<tubeCount;t++){
+    const start=t*fpt+1;
+    const end=Math.min((t+1)*fpt,fo);
+    const tubeSize=end-start+1;
+    const tubeColor=TUBE_COLORS[t%12];
+    const tubeColorName=FIBER_INDIVIDUAL_COLORS[t%12].nome;
+    const tubeFibers=fibersData.filter(f=>f&&f.n>=start&&f.n<=end);
+    const fusedCount=tubeFibers.filter(f=>f.fusedTo).length;
+    const sangriaCount=tubeFibers.filter(f=>f.sangria).length;
+    const splitterCount=isCTO?tubeFibers.filter(f=>f.splitter).length:0;
+    const usedCount=fusedCount+sangriaCount+splitterCount;
+    const barPct=tubeSize>0?Math.round(usedCount/tubeSize*100):0;
+    const barColor=barPct===100?'var(--green)':barPct>0?'var(--yellow)':'var(--border2)';
+    const isOpen=t===0; // first tube open by default
 
-  // headers
+    html+=`<div class="fusion-tube-block">
+      <div class="fusion-tube-header" style="border-left:4px solid ${tubeColor}"
+           onclick="toggleTube(${connId},${t+1})">
+        <span class="tube-toggle" id="fusion-toggle-tube-${connId}-${t+1}">${isOpen?'▼':'▶'}</span>
+        <span class="tube-color-dot" style="background:${tubeColor}"></span>
+        <span class="tube-label">TUBO ${String(t+1).padStart(2,'0')} — ${tubeColorName} — ${String(start).padStart(3,'0')}-${String(end).padStart(3,'0')}</span>
+        <span class="tube-badge">${usedCount}/${tubeSize}</span>
+        <span style="flex:1"></span>
+        <div class="tube-bar-bg"><div class="tube-bar-fill" style="width:${barPct}%;background:${barColor}"></div></div>
+      </div>
+      <div class="fusion-tube-fibers" id="fusion-tube-fibers-${connId}-${t+1}" style="display:${isOpen?'':'none'}">
+        ${renderTubeFiberRows(connId,start,end,fibersData,isCTO)}
+      </div>
+    </div>`;
+  }
+  return html;
+}
+
+function renderTubeFiberRows(connId, fiberStart, fiberEnd, fibersData, isCTO){
   const cols=isCTO?'32px 90px 1fr 60px 60px 24px':'32px 90px 1fr 60px 24px';
-  rows+=`<div style="display:grid;grid-template-columns:${cols};gap:0;padding:4px 14px;background:var(--surface3);border-bottom:1px solid var(--border)">
-    <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">#</div>
-    <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Fibra</div>
-    <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">FusÃ£o / Destino</div>
-    <div style="font-size:9px;color:var(--purple);text-transform:uppercase;letter-spacing:.5px;text-align:center">Sangria</div>
-    ${isCTO?`<div style="font-size:9px;color:var(--orange);text-transform:uppercase;letter-spacing:.5px;text-align:center">Splitter</div>`:''}
+  let rows=`<div style="display:grid;grid-template-columns:${cols};gap:0;padding:3px 12px;background:var(--surface3);border-bottom:1px solid var(--border)">
+    <div style="font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">#</div>
+    <div style="font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Fibra</div>
+    <div style="font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Fusão / Destino</div>
+    <div style="font-size:8px;color:var(--purple);text-transform:uppercase;letter-spacing:.5px;text-align:center">S</div>
+    ${isCTO?`<div style="font-size:8px;color:var(--orange);text-transform:uppercase;letter-spacing:.5px;text-align:center">SP</div>`:''}
     <div></div>
   </div>`;
 
-  for(let i=1;i<=fo;i++){
-    const fdata=fibers.find(f=>f&&f.n===i)||{n:i,fusedTo:null,sangria:false,splitter:false,obs:''};
+  for(let i=fiberStart;i<=fiberEnd;i++){
+    const fdata=fibersData.find(f=>f&&f.n===i)||{n:i,fusedTo:null,sangria:false,splitter:false,obs:''};
     const fc=FIBER_INDIVIDUAL_COLORS[(i-1)%12];
-    const isAnilha=i>12;
     const isFused=!!fdata.fusedTo;
     const isSangria=!!fdata.sangria;
     const isSplitter=isCTO&&!!fdata.splitter;
     const isUsed=isFused||isSangria||isSplitter;
 
-    let fusionLabel='â€”';
+    let fusionLabel='—';
     let fusionColor='var(--text3)';
     if(isFused){
       const destConn=DB.connections.find(c=>c.id===fdata.fusedTo.connId);
       const destEl=destConn?DB.elements.find(e=>e.id===(destConn.to===fusionState.nodeId?destConn.from:destConn.to)):null;
       const destFc=FIBER_INDIVIDUAL_COLORS[(fdata.fusedTo.fiberN-1)%12];
-      fusionLabel=`F${fdata.fusedTo.fiberN} Â· ${destEl?.nome||'?'}`;
+      fusionLabel=`F${fdata.fusedTo.fiberN} · ${esc(destEl?.nome||'?')}`;
       fusionColor=destFc.hex;
     } else if(isSangria){
-      fusionLabel='Sangria â†’';
+      fusionLabel='Sangria →';
       fusionColor='var(--purple)';
     } else if(isSplitter){
-      fusionLabel='â†’ Splitter CTO';
+      fusionLabel='→ Splitter CTO';
       fusionColor='var(--orange)';
     }
 
-    const isEven=i%2===0;
+    const isEven=(i-fiberStart)%2===0;
     const bgColor=isSplitter?'rgba(255,145,0,.08)':isSangria?'rgba(199,125,255,.08)':isFused?fc.hex+'0d':isEven?'rgba(255,255,255,.015)':'transparent';
     const borderLeft=isSplitter?'var(--orange)':isSangria?'var(--purple)':isFused?fc.hex:'transparent';
 
@@ -639,22 +1338,22 @@ function renderFiberRows(connId, fo, cd){
       data-conn="${connId}" data-fiber="${i}"
       onclick="fiberCellClick(${connId},${i})"
       oncontextmenu="fiberCellCtx(event,${connId},${i})"
-      style="display:grid;grid-template-columns:${cols};align-items:center;gap:0;padding:5px 14px;
+      style="display:grid;grid-template-columns:${cols};align-items:center;gap:0;padding:4px 12px;
         background:${bgColor};border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s;
         border-left:3px solid ${borderLeft};"
       onmouseover="this.style.background='rgba(255,255,255,.05)'"
       onmouseout="this.style.background='${bgColor}'">
 
-      <div style="font-size:10px;font-family:'Courier New',monospace;color:var(--text3);font-weight:700">${i}${isAnilha?'*':''}</div>
+      <div style="font-size:10px;font-family:'Courier New',monospace;color:var(--text3);font-weight:700">${i}</div>
 
-      <div style="display:flex;align-items:center;gap:6px">
-        <div style="width:10px;height:10px;border-radius:50%;background:${fc.hex};flex-shrink:0;${isAnilha?'outline:2px dashed '+fc.hex+'66;outline-offset:1px':''}"></div>
-        <span style="font-size:10px;color:${isUsed?fc.hex:'var(--text2)'};font-weight:${isUsed?700:400}">${fc.nome}</span>
+      <div style="display:flex;align-items:center;gap:5px">
+        <div style="width:9px;height:9px;border-radius:50%;background:${fc.hex};flex-shrink:0"></div>
+        <span style="font-size:9px;color:${isUsed?fc.hex:'var(--text2)'};font-weight:${isUsed?700:400}">${fc.nome}</span>
       </div>
 
-      <div style="font-size:10px;color:${fusionColor};font-weight:${isUsed?600:400};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:4px">
+      <div style="font-size:9px;color:${fusionColor};font-weight:${isUsed?600:400};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:4px">
         ${isUsed
-          ?`<span style="background:${fusionColor}18;border:1px solid ${fusionColor}44;border-radius:4px;padding:1px 6px">âŸ¶ ${fusionLabel}</span>`
+          ?`<span style="background:${fusionColor}18;border:1px solid ${fusionColor}44;border-radius:4px;padding:1px 5px">⟶ ${fusionLabel}</span>`
           :`<span style="font-style:italic;opacity:.5">livre</span>`}
       </div>
 
@@ -676,12 +1375,10 @@ function renderFiberRows(connId, fo, cd){
       </div>`:''}
 
       <div style="text-align:center">
-        ${isUsed?`<span style="font-size:11px;color:var(--red);opacity:.5;cursor:pointer" onclick="event.stopPropagation();fiberCellCtx(event,${connId},${i})" title="Remover">âœ•</span>`:''}
+        ${isUsed?`<span style="font-size:11px;color:var(--red);opacity:.5;cursor:pointer" onclick="event.stopPropagation();fiberCellCtx(event,${connId},${i})" title="Remover">✕</span>`:''}
       </div>
     </div>`;
   }
-
-  if(fo>12) rows+=`<div style="padding:4px 14px;font-size:9px;color:var(--text3);font-style:italic">* fibras com anilha (repetiÃ§Ã£o de cor)</div>`;
   return rows;
 }
 
@@ -695,11 +1392,11 @@ function fiberCellClick(connId,fiberN){
   if(fdata?.fusedTo){
     const destConn=DB.connections.find(c=>c.id===fdata.fusedTo.connId);
     const destEl=destConn?DB.elements.find(e=>e.id===(destConn.to===fusionState.nodeId?destConn.from:destConn.to)):null;
-    toast(`ðŸ”— F${fiberN} â†’ F${fdata.fusedTo.fiberN} em "${destEl?.nome||'?'}" Â· clique direito para remover`,'success');
+    toast(`🔗 F${fiberN} → F${fdata.fusedTo.fiberN} em "${esc(destEl?.nome||'?')}" · clique direito para remover`,'success');
     return;
   }
-  if(fdata?.sangria){toast(`ðŸ”€ Fibra ${fiberN} marcada como Sangria Â· clique direito para remover`,'success');return;}
-  if(fdata?.splitter){toast(`ðŸ”€ Fibra ${fiberN} vai ao Splitter Â· clique direito para remover`,'success');return;}
+  if(fdata?.sangria){toast(`🔀 Fibra ${fiberN} marcada como Sangria · clique direito para remover`,'success');return;}
+  if(fdata?.splitter){toast(`🔀 Fibra ${fiberN} vai ao Splitter · clique direito para remover`,'success');return;}
 
   const cellEl=document.querySelector(`.fiber-row[data-conn="${connId}"][data-fiber="${fiberN}"]`);
 
@@ -708,16 +1405,16 @@ function fiberCellClick(connId,fiberN){
     if(cellEl){cellEl.classList.add('selecting');cellEl.style.outline='2px solid var(--yellow)';cellEl.style.outlineOffset='-2px';}
     fusionSelected={connId,fiberN,el:cellEl};
     const fc=FIBER_INDIVIDUAL_COLORS[(fiberN-1)%12];
-    toast(`âš¡ Fibra ${fiberN} (${fc.nome}) selecionada â€” clique em outra fibra para fundir`,'success');
+    toast(`⚡ Fibra ${fiberN} (${fc.nome}) selecionada — clique em outra fibra para fundir`,'success');
   } else {
-    if(fusionSelected.connId===connId){toast('âš ï¸ Selecione uma fibra de outro cabo','error');return;}
+    if(fusionSelected.connId===connId){toast('⚠️ Selecione uma fibra de outro cabo','error');return;}
     setFusion(fusionSelected.connId, fusionSelected.fiberN, connId, fiberN, null);
     setFusion(connId, fiberN, fusionSelected.connId, fusionSelected.fiberN, null);
     if(fusionSelected.el){fusionSelected.el.style.outline='';fusionSelected.el.classList.remove('selecting');}
     fusionSelected=null;
     saveFusionState(fusionState.nodeId);
     refreshFusionCells();
-    toast('âœ… FusÃ£o criada!','success');
+    toast('✅ Fusão criada!','success');
   }
 }
 
@@ -730,7 +1427,7 @@ function toggleSangria(connId,fiberN){
   // toggle sangria; if turning ON, clear conflicting states
   if(!cur.sangria){
     cur.fusedTo=null;cur.splitter=false;cur.sangria=true;
-    toast(`ðŸ”€ Fibra ${fiberN} marcada como Sangria`,'success');
+    toast(`🔀 Fibra ${fiberN} marcada como Sangria`,'success');
   } else {
     cur.sangria=false;
     toast(`Sangria removida da fibra ${fiberN}`,'success');
@@ -748,7 +1445,7 @@ function toggleSplitter(connId,fiberN){
   const cur=fibers[idx];
   if(!cur.splitter){
     cur.fusedTo=null;cur.sangria=false;cur.splitter=true;
-    toast(`ðŸ”€ Fibra ${fiberN} vai ao Splitter da CTO`,'success');
+    toast(`🔀 Fibra ${fiberN} vai ao Splitter da CTO`,'success');
   } else {
     cur.splitter=false;
     toast(`Splitter removido da fibra ${fiberN}`,'success');
@@ -763,22 +1460,22 @@ function fiberCellCtx(e,connId,fiberN){
   const fdata=(cd.fibers||[]).find(f=>f&&f.n===fiberN);
   if(fdata?.fusedTo){
     const pairConnId=fdata.fusedTo.connId;const pairFiberN=fdata.fusedTo.fiberN;
-    if(confirm(`Remover fusÃ£o da fibra ${fiberN}?`)){
+    if(confirm(`Remover fusão da fibra ${fiberN}?`)){
       removeFusion(connId,fiberN);removeFusion(pairConnId,pairFiberN);
-      saveFusionState(fusionState.nodeId);refreshFusionCells();toast('ðŸ—‘ï¸ FusÃ£o removida','success');
+      saveFusionState(fusionState.nodeId);refreshFusionCells();toast('🗑️ Fusão removida','success');
     }
   } else if(fdata?.sangria){
     if(confirm(`Remover sangria da fibra ${fiberN}?`)){
-      fdata.sangria=false;saveFusionState(fusionState.nodeId);refreshFusionCells();toast('ðŸ—‘ï¸ Sangria removida','success');
+      fdata.sangria=false;saveFusionState(fusionState.nodeId);refreshFusionCells();toast('🗑️ Sangria removida','success');
     }
   } else if(fdata?.splitter){
     if(confirm(`Remover splitter da fibra ${fiberN}?`)){
-      fdata.splitter=false;saveFusionState(fusionState.nodeId);refreshFusionCells();toast('ðŸ—‘ï¸ Splitter removido','success');
+      fdata.splitter=false;saveFusionState(fusionState.nodeId);refreshFusionCells();toast('🗑️ Splitter removido','success');
     }
   } else {
     if(fusionSelected&&fusionSelected.connId===connId&&fusionSelected.fiberN===fiberN){
       if(fusionSelected.el){fusionSelected.el.style.outline='';fusionSelected.el.classList.remove('selecting');}
-      fusionSelected=null;toast('SeleÃ§Ã£o cancelada','success');
+      fusionSelected=null;toast('Seleção cancelada','success');
     }
   }
 }
@@ -809,7 +1506,28 @@ function refreshFusionCells(){
     const fo=getFiberCount(c.fibra);
     const cd=fusionState.data[c.id]||{fibers:[]};
     const container=document.getElementById(`fusion-fibers-${c.id}`);
-    if(container) container.innerHTML=renderFiberRows(c.id,fo,cd);
+    if(container){
+      // Save tube collapse states before re-rendering
+      const tubeCount=Math.ceil(fo/getFibersPerTube(c));
+      const tubeStates={};
+      for(let t=0;t<tubeCount;t++){
+        const tubeEl=document.getElementById(`fusion-tube-fibers-${c.id}-${t+1}`);
+        if(tubeEl) tubeStates[t+1]=tubeEl.style.display!=='none';
+      }
+      container.innerHTML=renderTubes(c.id,fo,cd,c);
+      // Restore tube collapse states
+      for(let t=0;t<tubeCount;t++){
+        const tubeNum=t+1;
+        if(tubeStates[tubeNum]!==undefined){
+          const tubeEl=document.getElementById(`fusion-tube-fibers-${c.id}-${tubeNum}`);
+          const toggleEl=document.getElementById(`fusion-toggle-tube-${c.id}-${tubeNum}`);
+          if(tubeEl&&toggleEl){
+            tubeEl.style.display=tubeStates[tubeNum]?'':'none';
+            toggleEl.textContent=tubeStates[tubeNum]?'▼':'▶';
+          }
+        }
+      }
+    }
     const fusedCount=(cd.fibers||[]).filter(f=>f&&f.fusedTo).length;
     const sangriaCount=(cd.fibers||[]).filter(f=>f&&f.sangria).length;
     const splitterCount=isCTO?(cd.fibers||[]).filter(f=>f&&f.splitter).length:0;
@@ -841,29 +1559,38 @@ function toggleFusionBlock(connId){
   if(!container) return;
   const hidden=container.style.display==='none';
   container.style.display=hidden?'':'none';
-  if(tog) tog.textContent=hidden?'â–¼':'â–¶';
+  if(tog) tog.textContent=hidden?'▼':'▶';
+}
+
+function toggleTube(connId,tubeNum){
+  const container=document.getElementById(`fusion-tube-fibers-${connId}-${tubeNum}`);
+  const toggle=document.getElementById(`fusion-toggle-tube-${connId}-${tubeNum}`);
+  if(!container||!toggle) return;
+  const hidden=container.style.display==='none';
+  container.style.display=hidden?'':'none';
+  toggle.textContent=hidden?'▼':'▶';
 }
 
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
 // CABLE MODAL
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
 function openCableModal() {
   if(!cableState||!cableState.fromId||!cableState.toId) return;
   const fromEl=DB.elements.find(e=>e.id===cableState.fromId);
   const toEl=DB.elements.find(e=>e.id===cableState.toId);
   document.getElementById('cable-from-name').textContent=fromEl?.nome||'?';
   document.getElementById('cable-to-name').textContent=toEl?.nome||'?';
-  document.getElementById('cable-waypoints-count').textContent=`${cableState.waypoints.length} ponto(s) intermediÃ¡rio(s) no trajeto`;
+  document.getElementById('cable-waypoints-count').textContent=`${cableState.waypoints.length} ponto(s) intermediário(s) no trajeto`;
   
   // List waypoints
   const list=document.getElementById('cable-waypoints-list');
   list.innerHTML=`<div style="font-size:10px;color:var(--text3);margin-bottom:6px;font-family:'Courier New',monospace">ROTA DO CABO</div>
-  <div class="waypoint-item"><span class="waypoint-num">S</span><span>InÃ­cio: ${fromEl?.nome||'?'} (${fromEl?.lat?.toFixed(5)}, ${fromEl?.lng?.toFixed(5)})</span></div>
-  ${cableState.waypoints.map((w,i)=>`<div class="waypoint-item"><span class="waypoint-num">${i+1}</span><span>Ponto: ${w.lat.toFixed(5)}, ${w.lng.toFixed(5)}</span><button onclick="removeWaypoint(${i})" style="margin-left:auto;background:none;border:none;color:var(--red);cursor:pointer;font-size:12px">Ã—</button></div>`).join('')}
-  <div class="waypoint-item"><span class="waypoint-num">E</span><span>Fim: ${toEl?.nome||'?'} (${toEl?.lat?.toFixed(5)}, ${toEl?.lng?.toFixed(5)})</span></div>`;
+  <div class="waypoint-item"><span class="waypoint-num">S</span><span>Início: ${esc(fromEl?.nome||'?')} (${fromEl?.lat?.toFixed(5)}, ${fromEl?.lng?.toFixed(5)})</span></div>
+  ${cableState.waypoints.map((w,i)=>`<div class="waypoint-item"><span class="waypoint-num">${i+1}</span><span>Ponto: ${w.lat.toFixed(5)}, ${w.lng.toFixed(5)}</span><button onclick="removeWaypoint(${i})" style="margin-left:auto;background:none;border:none;color:var(--red);cursor:pointer;font-size:12px">×</button></div>`).join('')}
+  <div class="waypoint-item"><span class="waypoint-num">E</span><span>Fim: ${esc(toEl?.nome||'?')} (${toEl?.lat?.toFixed(5)}, ${toEl?.lng?.toFixed(5)})</span></div>`;
 
-  // ========== CÃLCULO AUTOMÃTICO DA METRAGEM ==========
+  // ========== CÁLCULO AUTOMÁTICO DA METRAGEM ==========
   let totalDistance = 0;
   const points = [];
   // Adiciona ponto inicial
@@ -912,22 +1639,44 @@ async function toggleCableBroken(id) {
     drawCableOnMap(conn);
     // Se o painel de detalhes estiver aberto para este cabo, atualizar
     if (document.getElementById('right-panel').classList.contains('hidden') === false) {
-      // Verifica se o tÃ­tulo Ã© 'Cabo' e se o id Ã© o mesmo
+      // Verifica se o título é 'Cabo' e se o id é o mesmo
       const panelTitle = document.getElementById('panel-title').textContent;
-      if (panelTitle === 'ðŸ”Œ Cabo') {
+      if (panelTitle === '🔌 Cabo') {
         showCablePanel(id);
       }
     }
-    toast(newBroken ? 'ðŸ’” Cabo marcado como rompido' : 'ðŸ”§ Cabo reparado', 'success');
+    toast(newBroken ? '💔 Cabo marcado como rompido' : '🔧 Cabo reparado', 'success');
+  }
+}
+
+async function awaitFinishRedraw(){
+  const cid=_redrawCableId;
+  _redrawCableId=null;
+  if(!cableState||!cableState.fromId||!cableState.toId) return;
+  const waypoints=cableState.waypoints||[];
+  const conn=DB.connections.find(c=>c.id===cid);
+  if(!conn){toast('Cabo não encontrado','error');cableState=null;return;}
+  const payload={from:cableState.fromId,to:cableState.toId,waypoints};
+  const res=await api('PUT',papi(`/connections/${cid}`),payload);
+  if(res){
+    Object.assign(conn,res);
+    clearCablePreview();
+    cableState=null;
+    setMapMode('select');
+    refreshAllCables();
+    if(selectedCableId===cid) showCablePanel(cid);
+    toast('📍 Rota do cabo atualizada!','success');
+  } else {
+    toast('Erro ao atualizar rota','error');
   }
 }
 
 async function saveCable(){
-  if(!cableState||!cableState.fromId||!cableState.toId){toast('âš ï¸ Rota incompleta','error');return;}
+  if(!cableState||!cableState.fromId||!cableState.toId){toast('⚠️ Rota incompleta','error');return;}
   const conn={
   from:cableState.fromId, to:cableState.toId,
   waypoints:cableState.waypoints,
-  porta: cableState.presetPorta || document.getElementById('cable-porta').value.trim() || 'â€”',
+  porta: cableState.presetPorta || document.getElementById('cable-porta').value.trim() || '—',
   fibra: cableState.presetTipo || document.getElementById('cable-tipo').value,
   cor: cableState.presetCor || selectedFiberColor,
   obs: cableState.presetObs || document.getElementById('cable-obs').value.trim(),
@@ -943,7 +1692,7 @@ async function saveCable(){
   closeModal('modal-cable');
   setMapMode('select');
   updateStats();renderSidebar();renderTable();
-  toast('ðŸ”Œ Cabo traÃ§ado!','success');
+  toast('🔌 Cabo traçado!','success');
 }
 
 function cancelCableMode(){
@@ -959,116 +1708,250 @@ async function deleteCable(id){
   removeCableFromMap(id);
   if(selectedNodeId) showPanel(selectedNodeId);
   updateStats();renderSidebar();
-  toast('ðŸ—‘ï¸ Cabo removido','success');
+  toast('🗑️ Cabo removido','success');
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
 // PANEL
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
 function showPanel(id){
   const el=DB.elements.find(e=>e.id===id);if(!el) return;
   const tc=TYPE_CONFIG[el.tipo]||{};
   document.getElementById('right-panel').classList.remove('hidden');
-  document.getElementById('panel-title').innerHTML=`<span style="color:${tc.color}">${ICONS[el.tipo]||''}</span>&nbsp;${el.nome}`;
+  scheduleMapRender();
+  document.getElementById('panel-title').innerHTML=`<span style="color:${tc.color}">${ICONS[el.tipo]||''}</span>&nbsp;${esc(el.nome)}`;
   const connsOut=DB.connections.filter(c=>c.from===id);
   const connsIn=DB.connections.filter(c=>c.to===id);
-  const allConns=[...connsIn.map(c=>({...c,dir:'â†'})),...connsOut.map(c=>({...c,dir:'â†’'}))];
+  const allConns=[...connsIn.map(c=>({...c,dir:'←'})),...connsOut.map(c=>({...c,dir:'→'}))];
   const sc=el.status==='ativo'?'var(--green)':el.status==='offline'?'var(--red)':'var(--orange)';
   const hasCords=el.lat&&el.lng;
   document.getElementById('panel-body').innerHTML=`
     <div class="detail-section">
-      <div class="detail-label">InformaÃ§Ãµes</div>
-      <div class="detail-row"><span class="detail-key">Tipo</span><span class="detail-val">${tc.label||el.tipo}</span></div>
-      <div class="detail-row"><span class="detail-key">Status</span><span class="detail-val"><span class="badge badge-${el.status}">â— ${el.status}</span></span></div>
-      ${el.modelo?`<div class="detail-row"><span class="detail-key">Modelo</span><span class="detail-val">${el.modelo}</span></div>`:''}
-      ${el.endereco?`<div class="detail-row"><span class="detail-key">EndereÃ§o</span><span class="detail-val" style="font-size:10px;font-family:sans-serif">${el.endereco}</span></div>`:''}
+      <div class="detail-label">Informações</div>
+      <div class="detail-row"><span class="detail-key">Tipo</span><span class="detail-val">${tc.label||esc(el.tipo)}</span></div>
+      <div class="detail-row"><span class="detail-key">Status</span><span class="detail-val"><span class="badge badge-${el.status}">● ${esc(el.status)}</span></span></div>
+      ${el.modelo?`<div class="detail-row"><span class="detail-key">Modelo</span><span class="detail-val">${esc(el.modelo)}</span></div>`:''}
+      ${el.endereco?`<div class="detail-row"><span class="detail-key">Endereço</span><span class="detail-val" style="font-size:10px;font-family:sans-serif">${esc(el.endereco)}</span></div>`:''}
       ${hasCords?`<div class="detail-row"><span class="detail-key">Coords</span><span class="detail-val">${el.lat?.toFixed(5)}, ${el.lng?.toFixed(5)}</span></div>`:''}
-      ${el.detalhes?`<div class="detail-row"><span class="detail-key">Detalhes</span><span class="detail-val" style="font-size:10px;font-family:sans-serif">${el.detalhes}</span></div>`:''}
+      ${el.detalhes?`<div class="detail-row"><span class="detail-key">Detalhes</span><span class="detail-val" style="font-size:10px;font-family:sans-serif">${esc(el.detalhes)}</span></div>`:''}
       <div class="detail-row"><span class="detail-key">ID</span><span class="detail-val">#${el.id}</span></div>
     </div>
     <div class="detail-section">
       <div class="detail-label">Cabos (${allConns.length})</div>
-      ${allConns.length===0?'<div style="font-size:11px;color:var(--text3)">Sem conexÃµes</div>':
+      ${allConns.length===0?'<div style="font-size:11px;color:var(--text3)">Sem conexões</div>':
         allConns.map(c=>{
-          const otherId=c.dir==='â†’'?c.to:c.from;
+          const otherId=c.dir==='→'?c.to:c.from;
           const other=DB.elements.find(e=>e.id===otherId);
           const fc=FIBER_COLORS[c.cor]||'#666';
           return `<div class="conn-item">
             <div style="color:${TYPE_CONFIG[other?.tipo]?.color||'#888'}">${ICONS[other?.tipo]||''}</div>
             <div class="conn-info">
-              <div class="conn-name">${c.dir} ${other?.nome||'?'}</div>
-              <div class="conn-fiber"><span class="fiber-chip" style="background:${fc}"></span>${c.fibra||'â€”'}</div>
+              <div class="conn-name">${c.dir} ${esc(other?.nome||'?')}</div>
+              <div class="conn-fiber"><span class="fiber-chip" style="background:${fc}"></span>${esc(c.fibra||'—')}</div>
             </div>
-            <button class="btn-danger" style="padding:2px 6px;font-size:10px" onclick="deleteCable(${c.id})">âœ•</button>
+            <button class="btn-danger" style="padding:2px 6px;font-size:10px" onclick="deleteCable(${c.id})">✕</button>
           </div>`;
         }).join('')}
     </div>
+    <div class="detail-section" id="panel-photos-section">
+      <div class="detail-label">📷 Fotos</div>
+      <div id="panel-photos-gallery" style="display:flex;gap:6px;flex-wrap:wrap"><span style="font-size:10px;color:var(--text3)">Carregando...</span></div>
+    </div>
     <div style="display:flex;flex-direction:column;gap:6px">
-      <button class="btn-primary" style="justify-content:center" onclick="openEditModal(${el.id})">âœï¸ Editar</button>
-      ${!hasCords?`<button class="btn-warn" style="justify-content:center" onclick="startPlaceMode(${el.id})">ðŸ“ Posicionar no Mapa</button>`:''}
-      ${hasCords?`<button class="btn-warn" style="justify-content:center" onclick="startRepositionMode(${el.id})">â†• Reposicionar</button>`:''}
-      ${(el.tipo==='ceo'||el.tipo==='cto')?`<button class="btn-ghost" style="justify-content:center;color:var(--yellow);border-color:var(--yellow)" onclick="openFusionMap(${el.id})">ðŸ”€ Mapa de FusÃ£o</button>`:''}
-      ${el.tipo==='cto'?`<button class="btn-ghost" style="justify-content:center;color:var(--green);border-color:var(--green)" onclick="openCtoPorts(${el.id})">ðŸ“¡ Portas CTO</button>`:''}
-      <button class="btn-ghost" style="justify-content:center" onclick="beginCableFrom(${el.id})">ðŸ”Œ TraÃ§ar Cabo Aqui</button>
+      <button class="btn-primary" style="justify-content:center" onclick="openEditModal(${el.id})" aria-label="Editar elemento">✏️ Editar</button>
+      ${!hasCords?`<button class="btn-warn" style="justify-content:center" onclick="startPlaceMode(${el.id})" aria-label="Posicionar no mapa">📍 Posicionar no Mapa</button>`:''}
+      ${hasCords?`<button class="btn-warn" style="justify-content:center" onclick="startRepositionMode(${el.id})" aria-label="Reposicionar">↕ Reposicionar</button>`:''}
+      ${(el.tipo==='ceo'||el.tipo==='cto')?`<button class="btn-ghost" style="justify-content:center;color:var(--yellow);border-color:var(--yellow)" onclick="openFusionMap(${el.id})" aria-label="Mapa de fusão">🔀 Mapa de Fusão</button>`:''}
+      ${el.tipo==='cto'?`<button class="btn-ghost" style="justify-content:center;color:var(--green);border-color:var(--green)" onclick="openCtoPorts(${el.id})" aria-label="Portas CTO">📡 Portas CTO</button>`:''}
+      <button class="btn-ghost" style="justify-content:center" onclick="beginCableFrom(${el.id})" aria-label="Traçar cabo">🔌 Traçar Cabo Aqui</button>
     </div>`;
+  (async()=>{try{const photos=await api('GET',papi('/elements/'+id+'/photos'));const c=document.getElementById('panel-photos-gallery');if(c){if(!photos||!photos.length){c.innerHTML='<span style="font-size:10px;color:var(--text3)">Nenhuma foto</span>';return;}c.innerHTML=photos.filter(p=>p.url&&p.url.startsWith('/')).map(p=>`<a href="${p.url}" target="_blank"><img src="${p.url}" class="photo-thumb" loading="lazy"></a>`).join('');}}catch(e){}})();
 }
 
 function showCablePanel(id){
   const conn=DB.connections.find(c=>c.id===id); if(!conn) return;
   document.getElementById('right-panel').classList.remove('hidden');
+  scheduleMapRender();
   const fromEl=DB.elements.find(e=>e.id===conn.from);
   const toEl=DB.elements.find(e=>e.id===conn.to);
   const fc=FIBER_COLORS[conn.cor]||'#666';
   const isBroken = conn.broken === true;
-  const brokenText = isBroken ? 'ðŸ’” Rompido' : 'âœ… Ãntegro';
+  const brokenText = isBroken ? '💔 Rompido' : '✅ Íntegro';
   const brokenColor = isBroken ? 'var(--red)' : 'var(--green)';
-  document.getElementById('panel-title').innerHTML = 'ðŸ”Œ Cabo';
+  document.getElementById('panel-title').innerHTML = '🔌 Cabo';
   document.getElementById('panel-body').innerHTML=`
     <div class="detail-section">
       <div class="detail-label">Rota</div>
-      <div class="detail-row"><span class="detail-key">De</span><span class="detail-val">${fromEl?.nome||'?'}</span></div>
-      <div class="detail-row"><span class="detail-key">Para</span><span class="detail-val">${toEl?.nome||'?'}</span></div>
+      <div class="detail-row"><span class="detail-key">De</span><span class="detail-val">${esc(fromEl?.nome||'?')}</span></div>
+      <div class="detail-row"><span class="detail-key">Para</span><span class="detail-val">${esc(toEl?.nome||'?')}</span></div>
       <div class="detail-row"><span class="detail-key">Pontos</span><span class="detail-val">${(conn.waypoints||[]).length} waypoints</span></div>
     </div>
     <div class="detail-section">
       <div class="detail-label">Cabo</div>
-      <div class="detail-row"><span class="detail-key">Tipo</span><span class="detail-val">${conn.fibra||'â€”'}</span></div>
-      <div class="detail-row"><span class="detail-key">Cor</span><span class="detail-val"><span class="fiber-chip" style="background:${fc}"></span>${conn.cor||'â€”'}</span></div>
-      <div class="detail-row"><span class="detail-key">Porta</span><span class="detail-val">${conn.porta||'â€”'}</span></div>
+      <div class="detail-row"><span class="detail-key">Tipo</span><span class="detail-val">${esc(conn.fibra||'—')}</span></div>
+      <div class="detail-row"><span class="detail-key">Cor</span><span class="detail-val"><span class="fiber-chip" style="background:${fc}"></span>${esc(conn.cor||'—')}</span></div>
+      <div class="detail-row"><span class="detail-key">Porta</span><span class="detail-val">${esc(conn.porta||'—')}</span></div>
       ${conn.length ? `<div class="detail-row"><span class="detail-key">Metragem</span><span class="detail-val">${conn.length} m</span></div>` : ''}
       <div class="detail-row"><span class="detail-key">Estado</span><span class="detail-val" style="color:${brokenColor}">${brokenText}</span></div>
-      ${conn.obs ? `<div class="detail-row"><span class="detail-key">Obs</span><span class="detail-val">${conn.obs}</span></div>` : ''}
+      ${conn.obs ? `<div class="detail-row"><span class="detail-key">Obs</span><span class="detail-val">${esc(conn.obs)}</span></div>` : ''}
     </div>
     ${canDo('edit_cables') ? `
-    <button class="btn-warn" style="width:100%; justify-content:center; margin-bottom:8px" onclick="toggleCableBroken(${id})">
-      ${isBroken ? 'ðŸ”§ Reparar Cabo' : 'âš ï¸ Marcar como Rompido'}
-    </button>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <button class="btn-primary" style="justify-content:center" onclick="openEditCableModal(${id})">✏️ Editar Cabo</button>
+      <button class="btn-warn" style="justify-content:center" onclick="toggleCableBroken(${id})">
+        ${isBroken ? '🔧 Reparar Cabo' : '⚠️ Marcar como Rompido'}
+      </button>
+    </div>
     ` : ''}
-    <button class="btn-danger" style="width:100%; justify-content:center" onclick="deleteCable(${id})">ðŸ—‘ï¸ Remover Cabo</button>
+    <button class="btn-danger" style="width:100%; justify-content:center" onclick="deleteCable(${id})">🗑️ Remover Cabo</button>
   `;
 }
 
-function closePanel(){document.getElementById('right-panel').classList.add('hidden');}
+let selectedCableEditColor='Azul';
+function openEditCableModal(cid){
+  const conn=DB.connections.find(c=>c.id===cid);if(!conn) return;
+  document.getElementById('cable-edit-id').value=cid;
+  document.getElementById('cable-edit-fibra').value=conn.fibra||'';
+  document.getElementById('cable-edit-porta').value=conn.porta||'';
+  document.getElementById('cable-edit-length').value=conn.length||'';
+  document.getElementById('cable-edit-obs').value=conn.obs||'';
+  document.getElementById('cable-edit-broken').value=String(!!conn.broken);
+  selectedCableEditColor=conn.cor||'Azul';
+  if(typeof buildFiberColorGrid==='function') buildFiberColorGrid('cable-edit-fiber-grid','selectedCableEditColor');
+  openModal('modal-cable-edit');
+}
+async function saveEditCable(){
+  const cid=parseInt(document.getElementById('cable-edit-id').value);
+  const payload={
+    fibra:document.getElementById('cable-edit-fibra').value.trim(),
+    porta:document.getElementById('cable-edit-porta').value.trim(),
+    cor:selectedCableEditColor,
+    length:parseFloat(document.getElementById('cable-edit-length').value)||null,
+    obs:document.getElementById('cable-edit-obs').value.trim(),
+    broken:document.getElementById('cable-edit-broken').value==='true',
+  };
+  await api('PUT',papi(`/connections/${cid}`),payload);
+  Object.assign(DB.connections.find(c=>c.id===cid)||{},payload);
+  closeModal('modal-cable-edit');
+  refreshAllCables();
+  if(selectedCableId===cid) showCablePanel(cid);
+  toast('🔌 Cabo atualizado!','success');
+}
+
+function closePanel(){
+  document.getElementById('right-panel').classList.add('hidden');
+  scheduleMapRender();
+}
+
+function showElementPopup(id){
+  const el=DB.elements.find(e=>e.id===id);if(!el) return;
+  const existing=document.getElementById('element-popup-overlay');
+  if(existing) existing.remove();
+  const tc=TYPE_CONFIG[el.tipo]||{};
+  const connsOut=DB.connections.filter(c=>c.from===id);
+  const connsIn=DB.connections.filter(c=>c.to===id);
+  const allConns=[...connsIn.map(c=>({...c,dir:'←'})),...connsOut.map(c=>({...c,dir:'→'}))];
+  const hasCords=el.lat&&el.lng;
+  const content=`
+    <div class="element-popup-overlay" id="element-popup-overlay" onclick="closeElementPopup(event)">
+      <div class="element-popup" onclick="event.stopPropagation()">
+        <div class="element-popup-header">
+          <span style="color:${tc.color}">${ICONS[el.tipo]||''}</span>
+          <span style="flex:1;font-weight:700;font-size:15px">${esc(el.nome)}</span>
+          <button onclick="closeElementPopup()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:20px;padding:4px;line-height:1">×</button>
+        </div>
+        <div class="element-popup-body">
+          <div class="detail-section">
+            <div class="detail-label">Informações</div>
+            <div class="detail-row"><span class="detail-key">Tipo</span><span class="detail-val">${tc.label||esc(el.tipo)}</span></div>
+            <div class="detail-row"><span class="detail-key">Status</span><span class="detail-val"><span class="badge badge-${el.status}">● ${esc(el.status)}</span></span></div>
+            ${el.modelo?`<div class="detail-row"><span class="detail-key">Modelo</span><span class="detail-val">${esc(el.modelo)}</span></div>`:''}
+            ${el.endereco?`<div class="detail-row"><span class="detail-key">Endereço</span><span class="detail-val" style="font-size:10px;font-family:sans-serif">${esc(el.endereco)}</span></div>`:''}
+            ${hasCords?`<div class="detail-row"><span class="detail-key">Coords</span><span class="detail-val">${el.lat?.toFixed(5)}, ${el.lng?.toFixed(5)}</span></div>`:''}
+            ${el.detalhes?`<div class="detail-row"><span class="detail-key">Detalhes</span><span class="detail-val" style="font-size:10px;font-family:sans-serif">${esc(el.detalhes)}</span></div>`:''}
+            <div class="detail-row"><span class="detail-key">ID</span><span class="detail-val">#${el.id}</span></div>
+          </div>
+          <div class="detail-section">
+            <div class="detail-label">Cabos (${allConns.length})</div>
+            ${allConns.length===0?'<div style="font-size:11px;color:var(--text3)">Sem conexões</div>':
+              allConns.map(c=>{
+                const otherId=c.dir==='→'?c.to:c.from;
+                const other=DB.elements.find(e=>e.id===otherId);
+                const fc=FIBER_COLORS[c.cor]||'#666';
+                return `<div class="conn-item">
+                  <div style="color:${TYPE_CONFIG[other?.tipo]?.color||'#888'}">${ICONS[other?.tipo]||''}</div>
+                  <div class="conn-info">
+                    <div class="conn-name">${c.dir} ${esc(other?.nome||'?')}</div>
+                    <div class="conn-fiber"><span class="fiber-chip" style="background:${fc}"></span>${esc(c.fibra||'—')}</div>
+                  </div>
+                  <button class="btn-danger" style="padding:2px 6px;font-size:10px" onclick="deleteCable(${c.id})">✕</button>
+                </div>`;
+              }).join('')}
+          </div>
+          <div class="detail-section">
+            <div class="detail-label">📷 Fotos</div>
+            <div id="popup-photos-gallery" style="display:flex;gap:6px;flex-wrap:wrap"><span style="font-size:10px;color:var(--text3)">Carregando...</span></div>
+          </div>
+          <div class="element-popup-actions">
+            <button class="btn-primary" style="justify-content:center" onclick="openEditModal(${el.id});closeElementPopup()">✏️ Editar</button>
+            ${!hasCords?`<button class="btn-warn" style="justify-content:center" onclick="startPlaceMode(${el.id});closeElementPopup()">📍 Posicionar no Mapa</button>`:''}
+            ${hasCords?`<button class="btn-warn" style="justify-content:center" onclick="startRepositionMode(${el.id});closeElementPopup()">↕ Reposicionar</button>`:''}
+            ${(el.tipo==='ceo'||el.tipo==='cto')?`<button class="btn-ghost" style="justify-content:center;color:var(--yellow);border-color:var(--yellow)" onclick="openFusionMap(${el.id});closeElementPopup()">🔀 Mapa de Fusão</button>`:''}
+            ${el.tipo==='cto'?`<button class="btn-ghost" style="justify-content:center;color:var(--green);border-color:var(--green)" onclick="openCtoPorts(${el.id});closeElementPopup()">📡 Portas CTO</button>`:''}
+            <button class="btn-ghost" style="justify-content:center" onclick="beginCableFrom(${el.id});closeElementPopup()">🔌 Traçar Cabo Aqui</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend',content);
+  document.addEventListener('keydown',elementPopupKeydown);
+  (async()=>{try{const photos=await api('GET',papi('/elements/'+id+'/photos'));const c=document.getElementById('popup-photos-gallery');if(c){if(!photos||!photos.length){c.innerHTML='<span style="font-size:10px;color:var(--text3)">Nenhuma foto</span>';return;}c.innerHTML=photos.filter(p=>p.url&&p.url.startsWith('/')).map(p=>`<a href="${p.url}" target="_blank"><img src="${p.url}" class="photo-thumb" loading="lazy"></a>`).join('');}}catch(e){}})();
+}
+
+function closeElementPopup(event){
+  if(event && event.target!==event.currentTarget) return;
+  const overlay=document.getElementById('element-popup-overlay');
+  if(overlay) overlay.remove();
+  document.removeEventListener('keydown',elementPopupKeydown);
+}
+
+function elementPopupKeydown(e){
+  if(e.key==='Escape') closeElementPopup();
+}
 
 function startPlaceMode(id){
   placeTargetId=id;
   setMapMode('place');
   switchTab('geomap');
-  toast('ðŸ“ Clique no mapa para posicionar o elemento','success');
+  toast('📍 Clique no mapa para posicionar o elemento','success');
   closePanel();
+}
+let _redrawCableId = null;
+function redrawCableRoute(){
+  const cid=parseInt(document.getElementById('cable-edit-id').value);
+  const conn=DB.connections.find(c=>c.id===cid);
+  if(!conn){toast('Cabo não encontrado','error');return;}
+  const fromEl=DB.elements.find(e=>e.id===conn.from);
+  if(!fromEl?.lat){toast('⚠️ Elemento de origem sem coordenadas','error');return;}
+  _redrawCableId=cid;
+  closeModal('modal-cable-edit');
+  cableState={fromId:conn.from,toId:null,waypoints:[],previewLine:null,complete:false};
+  setMapMode('cable');
+  switchTab('geomap');
+  toast('📍 Redesenhe a rota — clique em pontos intermediários e no elemento de destino','success');
 }
 function beginCableFrom(id){
   const el=DB.elements.find(e=>e.id===id);
-  if(!el?.lat){toast('âš ï¸ Posicione o elemento no mapa primeiro','error');return;}
+  if(!el?.lat){toast('⚠️ Posicione o elemento no mapa primeiro','error');return;}
   cableState={fromId:id,toId:null,waypoints:[],previewLine:null,complete:false};
   setMapMode('cable');
   switchTab('geomap');
-  toast('ðŸ”Œ Clique para adicionar pontos, clique em outro elemento para finalizar','success');
+  toast('🔌 Clique para adicionar pontos, clique em outro elemento para finalizar','success');
 }
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
 // VIS NETWORK (TOPOLOGY TAB)
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════
 function preloadNodeIcons(){
   Object.entries(TYPE_CONFIG).forEach(([tipo,tc])=>{
     const c=document.createElement('canvas');c.width=60;c.height=60;
@@ -1112,7 +1995,7 @@ function buildVisData(){
     const pos=DB.positions[String(el.id)]||{};
     return {
       id:el.id,label:el.nome,
-      title:`<b>${el.nome}</b><br>${tc.label}<br>${el.status}${el.endereco?'<br>'+el.endereco:''}`,
+      title:`<b>${esc(el.nome)}</b><br>${tc.label}<br>${esc(el.status)}${el.endereco?'<br>'+esc(el.endereco):''}`,
       color:{background:sc+'22',border:sc,highlight:{background:sc+'44',border:'#fff'}},
       font:{color:'#e8edf5',size:12},
       shape:NODE_CANVAS_ICONS[el.tipo]?'circularImage':'dot',
@@ -1156,9 +2039,14 @@ function initTopology(){
     else{closePanel();selectedNodeId=null;}
   });
   network.on('doubleClick',p=>{if(p.nodes.length>0)openEditModal(p.nodes[0]);});
-  network.on('oncontext',p=>{
+  network.on('oncontext',function(p){
     p.event.preventDefault();
-    if(p.nodes.length>0){ctxTargetId=p.nodes[0];showCtxMenu(p.event.clientX,p.event.clientY);}
+    const nodeId = network.getNodeAt({x: p.event.clientX, y: p.event.clientY});
+    if (nodeId) {
+      ctxTargetId = parseInt(nodeId);
+      ctxTargetType = null;
+      showCtxMenu(p.event.clientX, p.event.clientY);
+    }
   });
   preloadNodeIcons();
 }
@@ -1196,6 +2084,9 @@ registerPublicApi('map', {
   pickPendingCableColor,
   confirmCableTypeAndStart,
   startCableModeWithPreset,
+  hideQuickAddPopup,
+  showQuickAddPopup,
+  quickAddElement,
   handleMapClick,
   handleMapMouseMove,
   updateCablePreviewLive,
@@ -1216,7 +2107,6 @@ registerPublicApi('map', {
   loadFusionState,
   openFusionMap,
   renderCableBlock,
-  renderFiberRows,
   fiberCellClick,
   toggleSangria,
   toggleSplitter,
@@ -1225,6 +2115,7 @@ registerPublicApi('map', {
   removeFusion,
   refreshFusionCells,
   toggleFusionBlock,
+  toggleTube,
   openCableModal,
   removeWaypoint,
   toggleCableBroken,
@@ -1232,8 +2123,13 @@ registerPublicApi('map', {
   cancelCableMode,
   deleteCable,
   showPanel,
+  showElementPopup,
+  closeElementPopup,
   showCablePanel,
   closePanel,
+  openEditCableModal,
+  saveEditCable,
+  redrawCableRoute,
   startPlaceMode,
   beginCableFrom,
   preloadNodeIcons,
@@ -1242,6 +2138,19 @@ registerPublicApi('map', {
   initTopology,
   saveVisPositions,
   refreshTopology,
+  scheduleMapRender,
+  filterMapByStatus,
+  populateMapLegend,
+  toggleMapLayer,
+  handleGlobalSearchInput,
+  focusSearchResult,
+  highlightMarkerTemporarily,
+  highlightPathOnMap,
+  ctxCreateIncident,
+  handleMeasureClick,
+  handleMeasureDblClick,
+  clearMeasure,
+  finishMeasure,
 }, [
   'fitMapToBounds',
   'setMapMode',
@@ -1251,7 +2160,17 @@ registerPublicApi('map', {
   'searchAddress',
   'closePanel',
   'beginCableFrom',
+  'openEditCableModal',
+  'saveEditCable',
+  'redrawCableRoute',
+  'startPlaceMode',
+  'filterMapByStatus',
+  'toggleMapLayer',
+  'focusSearchResult',
+  'highlightPathOnMap',
+  'ctxCreateIncident',
+  'clearMeasure',
+  'finishMeasure',
 ]);
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-
+// ═══════════════════════════════════════════════════════

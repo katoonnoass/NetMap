@@ -3,6 +3,7 @@ Rotas para integracoes externas, incluindo IXC Soft.
 """
 from flask import Blueprint, jsonify, request, session
 
+from .. import limiter
 from ..services import audit_service, ixc_service
 from ..utils.auth import require_login, require_perm
 
@@ -16,6 +17,7 @@ def get_ixc_config():
 
 
 @integrations_bp.route("/api/integrations/ixc/config", methods=["PUT"])
+@limiter.limit("5 per minute")
 @require_perm("manage_users")
 def save_ixc_config():
     try:
@@ -34,6 +36,7 @@ def save_ixc_config():
 
 
 @integrations_bp.route("/api/integrations/ixc/test", methods=["POST"])
+@limiter.limit("3 per minute")
 @require_perm("manage_users")
 def test_ixc_connection():
     try:
@@ -53,6 +56,7 @@ def test_ixc_connection():
 
 
 @integrations_bp.route("/api/integrations/ixc/viability", methods=["POST"])
+@limiter.limit("10 per minute")
 @require_perm("manage_users")
 def lookup_ixc_viability():
     try:
@@ -71,6 +75,7 @@ def lookup_ixc_viability():
 
 
 @integrations_bp.route("/api/projects/<pid>/integrations/ixc/sync", methods=["POST"])
+@limiter.limit("3 per minute")
 @require_perm("edit_elements")
 def sync_project_ixc(pid):
     payload = request.get_json(silent=True) or {}

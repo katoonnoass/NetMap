@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import base64
 import copy
+import ipaddress
 import json
+import logging
 import ssl
 from datetime import datetime
 from typing import Any
@@ -27,7 +29,7 @@ DEFAULT_IXC_CONFIG = {
     "enabled": False,
     "base_url": "",
     "token": "",
-    "self_signed": True,
+    "self_signed": False,
     "auth_mode": "auto",
     "timeout_seconds": 15,
     "resource_names": {
@@ -50,9 +52,31 @@ def _normalize_base_url(url: str) -> str:
     parsed = urlparse(clean)
     if parsed.scheme not in {"http", "https"}:
         raise ValueError("A URL do IXC deve iniciar com http:// ou https://")
+    _validate_url_hostname(parsed.hostname)
     if clean.endswith("/webservice/v1"):
         return clean
     return f"{clean}/webservice/v1"
+
+
+def _validate_url_hostname(hostname: str | None) -> None:
+    if not hostname:
+        raise ValueError("A URL do IXC deve conter um hostname valido")
+    try:
+        resolved_ips = __import__("socket").getaddrinfo(hostname, None, proto=__import__("socket").IPPROTO_TCP)
+    except Exception:
+        return
+    for family, _, _, _, sockaddr in resolved_ips:
+        ip = sockaddr[0]
+        try:
+            addr = ipaddress.ip_address(ip)
+            if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
+                raise ValueError(
+                    f"A URL do IXC resolve para um endereco interno ({ip}). "
+                    "Nao e permitido acessar redes privadas."
+                )
+        except ValueError as exc:
+            if "interno" in str(exc) or "privada" in str(exc):
+                raise
 
 
 def _normalize_config(payload: dict | None, previous: dict | None = None) -> dict:
@@ -103,7 +127,7 @@ def get_config(mask_secret: bool = True) -> dict:
     if mask_secret:
         token = config.pop("token", "")
         config["has_token"] = bool(token)
-        config["token_masked"] = f"{token[:4]}...{token[-4:]}" if len(token) >= 10 else ("***" if token else "")
+        config["token_masked"] = "****" if token else ""
     return config
 
 
@@ -120,6 +144,10 @@ def save_config(payload: dict) -> dict:
 
 def _ssl_context(self_signed: bool):
     if self_signed:
+        logging.getLogger("netmap").warning(
+            "IXC: SSL verification disabled (self_signed=True). "
+            "Token transmitted without certificate validation."
+        )
         return ssl._create_unverified_context()
     return ssl.create_default_context()
 
@@ -319,6 +347,7 @@ def test_connection(payload: dict | None = None) -> dict:
     return {
         "ok": bool(best_attempt),
         "tested_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "ssl_verified": not bool(config.get("self_signed", False)),
         "module_reachable": bool(module_result) or any(item.get("stage") == "module" for item in attempts_log),
         "resource_name": resource_name,
         "selected_mode": best_attempt.get("mode") if best_attempt else None,

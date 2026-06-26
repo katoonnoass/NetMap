@@ -1,95 +1,63 @@
-<<<<<<< HEAD
-# ISP NetMap Pro — Arquitetura Modular
+# ISP NetMap Pro
 
-## Como rodar
+Aplicacao Flask para inventario, mapa geografico, topologia, cabos, DIO/CTO,
+incidentes, clientes, auditoria e integracao IXC.
+
+## Producao
+
+O ambiente de producao usa:
+
+- Gunicorn gerenciado por `systemd`;
+- PostgreSQL com documentos JSONB versionados;
+- backup diario em `/opt/NetMap/backups`;
+- Leaflet e MarkerCluster hospedados localmente;
+- segredos no arquivo `.env`, fora do Git.
 
 ```bash
-pip install -r requirements.txt
-python run.py
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+cp .env.example .env
+sudo cp deploy/netmap.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now netmap
 ```
 
-Acesse: http://localhost:5000  
-Login padrão: `admin` / `admin123`
+O arquivo `.env` deve conter uma chave secreta forte, senha inicial aleatoria e
+uma `DATABASE_URL` exclusiva. Nao existe senha administrativa padrao no codigo.
 
----
+## Migracao JSON para PostgreSQL
 
-## Estrutura de arquivos
+Crie um backup de `data/`, configure `DATABASE_URL` e execute:
 
-```
-isp_netmap_modular/
-│
-├── run.py                        # Ponto de entrada — inicia o servidor
-│
-├── requirements.txt
-│
-├── app/                          # Pacote principal da aplicação
-│   ├── __init__.py               # Application Factory (create_app)
-│   ├── config.py                 # Configurações (SECRET_KEY, caminhos, permissões)
-│   │
-│   ├── routes/                   # ★ Uma responsabilidade por arquivo
-│   │   ├── auth.py               # /login, /api/auth/login|logout|me
-│   │   ├── users.py              # /api/users (CRUD de usuários)
-│   │   ├── projects.py           # /api/projects (CRUD + export + duplicar)
-│   │   ├── elements.py           # /api/projects/<pid>/elements + positions
-│   │   ├── connections.py        # /api/projects/<pid>/connections
-│   │   ├── dios.py               # /api/projects/<pid>/dios + portas
-│   │   ├── ctos.py               # /api/projects/<pid>/ctos/<id>/ports
-│   │   └── static_files.py      # Serve vis-network.min.js com gzip
-│   │
-│   ├── services/                 # ★ Toda a lógica de negócio (sem Flask aqui)
-│   │   ├── user_service.py       # Autenticação, CRUD de usuários, hash de senha
-│   │   └── project_service.py   # CRUD de projetos, seed demo, slugify, next_id
-│   │
-│   └── utils/
-│       └── auth.py               # Decorators: @require_login, @require_perm
-│
-├── data/                         # Persistência em JSON (sem banco de dados)
-│   ├── users.json
-│   └── projects/
-│       └── *.json
-│
-├── static/
-│   └── vis-network.min.js
-│
-└── templates/
-    ├── index.html
-    └── login.html
+```bash
+set -a
+. ./.env
+set +a
+.venv/bin/python tools/migrate_to_postgres.py
 ```
 
----
+Os arquivos JSON permanecem como copia de recuperacao. Em operacao normal, o
+PostgreSQL passa a ser a fonte oficial dos dados.
 
-## Por que essa estrutura?
+## Testes
 
-| Antes (monolito) | Depois (modular) |
-|---|---|
-| 1 arquivo `app.py` com ~350 linhas | Cada módulo tem ~30–80 linhas |
-| Tudo misturado: rotas, lógica, dados | Separação clara: rota → service → dados |
-| Difícil adicionar nova feature | Cria um novo arquivo em `routes/` |
-| Difícil testar | Services podem ser testados sem Flask |
-| Secret key hardcoded | Configuração centralizada em `config.py` |
+```bash
+.venv/bin/pytest -m "not e2e"
+```
 
----
+Os testes reais de navegador verificam arrasto horizontal, tema escuro e layout
+mobile:
 
-## Como adicionar uma nova funcionalidade
+```bash
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/playwright install chromium
+NETMAP_E2E_URL=http://127.0.0.1:5005 \
+NETMAP_E2E_USER=admin \
+NETMAP_E2E_PASSWORD='senha-atual' \
+.venv/bin/pytest -m e2e
+```
 
-**Exemplo: adicionar relatórios**
+## Desenvolvimento com JSON
 
-1. Crie `app/services/report_service.py` com a lógica
-2. Crie `app/routes/reports.py` com as rotas
-3. Registre o blueprint em `app/__init__.py`:
-   ```python
-   from .routes.reports import reports_bp
-   app.register_blueprint(reports_bp)
-   ```
-
-Pronto. Os outros módulos não precisam ser tocados.
-
----
-
-## Dados
-
-Os dados ficam em `data/projects/<slug>.json`. Cada projeto é um arquivo JSON independente. Para migrar para banco de dados no futuro, basta reescrever apenas os `services/` — as rotas não mudam.
-=======
-# NetMap
-ISP NetMap
->>>>>>> af1d081bd82cfb4abec2253fdf51b2c1a9456e75
+Sem `DATABASE_URL`, a aplicacao usa arquivos JSON atomicos. Esse modo existe
+para testes e desenvolvimento local, nao para execucao com multiplos workers.

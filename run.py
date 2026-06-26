@@ -14,17 +14,18 @@ if __name__ == "__main__":
     with app.app_context():
         ensure_admin()
         ensure_demo()
-        sanitize_all_projects()
+        # sanitize_all_projects()  # runs on every element anyway
 
     try:
         local_ip = socket.gethostbyname(socket.gethostname())
     except Exception:
         local_ip = "???.???.???.???"
 
+    port = 5005
     print("\nISP NetMap Pro rodando em:")
-    print("   Local:  http://localhost:5000")
-    print(f"   Rede:   http://{local_ip}:5000")
+    print(f"   Local:  http://localhost:{port}")
+    print(f"   Rede:   http://{local_ip}:{port}")
     print("\nLogin padrao inicial: admin / admin123")
     print("Troque a senha padrao assim que possivel.\n")
 
-    app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
+    app.run(host="0.0.0.0", port=port, debug=False, threaded=True)
