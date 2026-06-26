@@ -103,6 +103,7 @@ async function changeOwnPassword(){
 async function openUsersModal(){
   document.getElementById('user-dropdown').classList.remove('open');
   await renderUsersList();
+  await renderApiKeysList();
   openModal('modal-users');
 }
 
@@ -200,6 +201,50 @@ async function deleteUserUI(username, nome){
   toast('🗑️ Usuário excluído','success');
 }
 
+async function renderApiKeysList(){
+  const data=await api('GET','/api/apikeys');
+  const el=document.getElementById('apikeys-list');
+  if(!el) return;
+  if(!data||!data.items||!data.items.length){el.innerHTML='<div style="font-size:10px;color:var(--text3);text-align:center;padding:8px">Nenhuma chave API.</div>';return;}
+  el.innerHTML=data.items.map(k=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border)">
+    <div>
+      <span style="font-size:11px;font-weight:600">${esc(k.name)}</span>
+      <code style="font-size:10px;color:var(--text3);margin-left:8px">${esc(k.key_prefix)}</code>
+      <span style="font-size:9px;color:var(--text3);margin-left:6px">${esc(k.role)}${k.active?'':' · revogada'}</span>
+    </div>
+    <div style="display:flex;gap:4px">
+      ${k.active?`<button class="btn-ghost" style="padding:2px 6px;font-size:10px;color:var(--orange)" onclick="revokeApiKeyUI(${k.id})">Revogar</button>`:''}
+      <button class="btn-danger" style="padding:2px 6px;font-size:10px" onclick="deleteApiKeyUI(${k.id})">✕</button>
+    </div>
+  </div>`).join('');
+}
+
+async function createApiKeyUI(){
+  const name=document.getElementById('new-apikey-name').value.trim();
+  const role=document.getElementById('new-apikey-role').value;
+  if(!name){toast('⚠️ Nome obrigatório','error');return;}
+  const res=await api('POST','/api/apikeys',{name,role});
+  if(!res) return;
+  document.getElementById('new-apikey-name').value='';
+  await renderApiKeysList();
+  toast(`🔑 Chave criada: ${res.key}`,'success');
+  prompt('Copie a chave API (não será mostrada novamente):',res.key);
+}
+
+async function revokeApiKeyUI(id){
+  if(!confirm('Revogar esta chave API? Ela não poderá mais ser usada.')) return;
+  await api('PUT',`/api/apikeys/${id}`,{action:'revoke'});
+  await renderApiKeysList();
+  toast('🔑 Chave revogada','success');
+}
+
+async function deleteApiKeyUI(id){
+  if(!confirm('Excluir esta chave API permanentemente?')) return;
+  await api('DELETE',`/api/apikeys/${id}`);
+  await renderApiKeysList();
+  toast('🔑 Chave excluída','success');
+}
+
 registerPublicApi('auth', {
   loadSession,
   renderUserChip,
@@ -216,8 +261,13 @@ registerPublicApi('auth', {
   updatePermsPreview,
   saveUserEdit,
   deleteUserUI,
+  renderApiKeysList,
+  createApiKeyUI,
+  revokeApiKeyUI,
+  deleteApiKeyUI,
 }, [
   'createUserUI',
+  'createApiKeyUI',
   'doLogout',
   'openPasswordModal',
   'changeOwnPassword',
@@ -247,6 +297,9 @@ document.addEventListener('DOMContentLoaded',async()=>{
   initGeoMap();
   refreshAllMarkers();
   refreshAllCables();
+  loadFencesFromDB();
+  loadMaintenanceList();
+  startSSEListener();
   updateStats();renderSidebar();renderTable();renderDioPanels();renderCustomers();renderIncidents();renderCables();renderValidation();renderReports();renderIxcSettings();
   preloadNodeIcons();
   setMapMode('select');

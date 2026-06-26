@@ -7,6 +7,8 @@ import io
 
 from flask import Blueprint, jsonify, render_template, render_template_string, request, send_file, session
 
+from datetime import datetime
+
 from .. import limiter
 from ..services import audit_service, geodata_service, project_service
 from ..utils.auth import require_login, require_perm
@@ -412,3 +414,64 @@ th{background:#f5f7fa}
         cable_rows=cable_rows,
         incident_rows=incident_rows,
     )
+
+
+@projects_bp.route("/api/projects/compare")
+@require_login
+def compare_projects():
+    pid_a = request.args.get("a", "").strip()
+    pid_b = request.args.get("b", "").strip()
+    if not pid_a or not pid_b:
+        return jsonify({"error": "Parametros a e b obrigatorios"}), 400
+    db_a = project_service.load_project(pid_a)
+    db_b = project_service.load_project(pid_b)
+    if not db_a or not db_b:
+        return jsonify({"error": "Projeto nao encontrado"}), 404
+
+    def _counts(db):
+        elements = db.get("elements", [])
+        connections = db.get("connections", [])
+        tc = {}
+        for e in elements:
+            tc[e.get("tipo", "?")] = tc.get(e.get("tipo", "?"), 0) + 1
+        sc = {}
+        for e in elements:
+            sc[e.get("status", "?")] = sc.get(e.get("status", "?"), 0) + 1
+        incidents = db.get("incidents", [])
+        return {
+            "total_elements": len(elements),
+            "total_connections": len(connections),
+            "total_cable_m": round(
+                sum(c.get("length", 0) for c in connections if isinstance(c.get("length"), (int, float))), 1
+            ),
+            "broken_connections": len([c for c in connections if c.get("broken")]),
+            "type_counts": tc,
+            "status_counts": sc,
+            "open_incidents": len([i for i in incidents if i.get("status") != "closed"]),
+            "total_incidents": len(incidents),
+        }
+
+    ca = _counts(db_a)
+    cb = _counts(db_b)
+    all_types = sorted(set(list(ca.get("type_counts", {}).keys()) + list(cb.get("type_counts", {}).keys())))
+    type_diff = []
+    for t in all_types:
+        type_diff.append({
+            "tipo": t,
+            "a": ca.get("type_counts", {}).get(t, 0),
+            "b": cb.get("type_counts", {}).get(t, 0),
+            "diff": cb.get("type_counts", {}).get(t, 0) - ca.get("type_counts", {}).get(t, 0),
+        })
+
+    ids_a = {e["id"] for e in db_a.get("elements", [])}
+    ids_b = {e["id"] for e in db_b.get("elements", [])}
+    only_in_a = [e["id"] for e in db_a.get("elements", []) if e["id"] not in ids_b]
+    only_in_b = [e["id"] for e in db_b.get("elements", []) if e["id"] not in ids_a]
+
+    return jsonify({
+        "a": {"id": pid_a, "name": db_a.get("name", pid_a), **ca},
+        "b": {"id": pid_b, "name": db_b.get("name", pid_b), **cb},
+        "type_diff": type_diff,
+        "only_in_a": only_in_a[:50],
+        "only_in_b": only_in_b[:50],
+    })

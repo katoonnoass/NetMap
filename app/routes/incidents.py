@@ -127,3 +127,32 @@ def delete_incident(pid, incident_id):
         message=f"Incidente #{incident_id} removido",
     )
     return jsonify({"ok": True})
+
+
+@incidents_bp.route(
+    "/api/projects/<pid>/incidents/<int:incident_id>/comments", methods=["POST"]
+)
+@limiter.limit("30 per minute")
+@require_perm("edit_elements")
+def add_incident_comment(pid, incident_id):
+    db = project_service.load_project(pid)
+    if not db:
+        return jsonify({"error": "Not found"}), 404
+    data = request.get_json(silent=True) or {}
+    text = str(data.get("text", "")).strip()
+    if not text:
+        return jsonify({"error": "Comentario vazio"}), 400
+    author = session.get("user", "system")
+    comment = incident_service.add_comment(db, incident_id, author, text)
+    if not comment:
+        return jsonify({"error": "Incidente nao encontrado"}), 404
+    project_service.save_project(pid, db)
+    audit_service.log_event(
+        pid,
+        action="incident_comment",
+        username=author,
+        entity_type="incident",
+        entity_id=incident_id,
+        message=f"Comentario adicionado ao incidente #{incident_id}",
+    )
+    return jsonify(comment), 201

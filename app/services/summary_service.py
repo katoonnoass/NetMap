@@ -68,6 +68,13 @@ def build_project_summary(project: dict, pid: str) -> dict:
 
     cto_capacity.sort(key=lambda item: item["occupancy"], reverse=True)
 
+    all_cto_occupancy = cto_capacity[:]
+    total_cto_ports_used = sum(c["used"] for c in all_cto_occupancy)
+    total_cto_ports_total = sum(c["total"] for c in all_cto_occupancy)
+    global_cto_occupancy = round(
+        (total_cto_ports_used / total_cto_ports_total) * 100, 1
+    ) if total_cto_ports_total else 0
+
     return {
         "project_id": pid,
         "project_name": project.get("name", pid),
@@ -96,6 +103,10 @@ def build_project_summary(project: dict, pid: str) -> dict:
         "type_counts": type_counts,
         "average_connection_length": avg_length,
         "top_cto_occupancy": cto_capacity[:5],
+        "all_cto_occupancy": all_cto_occupancy,
+        "global_cto_occupancy": global_cto_occupancy,
+        "total_cto_ports_used": total_cto_ports_used,
+        "total_cto_ports_total": total_cto_ports_total,
         "alerts": {
             "offline_elements": [
                 element["nome"]

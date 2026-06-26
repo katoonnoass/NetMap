@@ -145,6 +145,39 @@ function renderIncidentTimeline(incident){
   } else {
     section.style.display='none';
   }
+  const commentsList=document.getElementById('incident-comments-list');
+  if(commentsList){
+    const comments=incident.comments||[];
+    if(comments.length){
+      commentsList.innerHTML=comments.map(c=>`<div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+          <span style="font-size:10px;font-weight:700;color:var(--accent)">${esc(c.author||'')}</span>
+          <span style="font-size:9px;color:var(--text3)">${esc(c.created_at||'')}</span>
+        </div>
+        <div style="font-size:11px;color:var(--text2)">${esc(c.text)}</div>
+      </div>`).join('');
+    } else {
+      commentsList.innerHTML='<div style="font-size:10px;color:var(--text3)">Sem comentários</div>';
+    }
+  }
+}
+
+async function addIncidentComment(){
+  const incId=document.getElementById('incident-id').value;
+  const input=document.getElementById('incident-comment-input');
+  if(!incId||!input) return;
+  const text=input.value.trim();
+  if(!text){toast('⚠️ Comentário vazio','error');return;}
+  const res=await api('POST',papi(`/incidents/${incId}/comments`),{text});
+  if(!res) return;
+  input.value='';
+  const incident=DB.incidents.find(i=>String(i.id)===String(incId));
+  if(incident){
+    if(!incident.comments) incident.comments=[];
+    incident.comments.push(res);
+    renderIncidentTimeline(incident);
+  }
+  toast('💬 Comentário adicionado!','success');
 }
 
 async function saveIncident(){
@@ -324,6 +357,7 @@ registerPublicApi('workflows', {
   populateIncidentElementOptions,
   openIncidentModal,
   renderIncidentTimeline,
+  addIncidentComment,
   saveIncident,
   deleteIncidentUI,
   focusIncidentElement,
@@ -340,10 +374,16 @@ registerPublicApi('workflows', {
   ctxDelete,
   ctxCreateIncident,
   ctxDuplicate,
+  loadMaintenanceList,
+  renderMaintenanceList,
+  openMaintenanceModal,
+  saveMaintenance,
+  deleteMaintenance,
 }, [
   'deleteIncidentUI',
   'openIncidentModal',
   'renderIncidentTimeline',
+  'addIncidentComment',
   'switchTab',
   'ctxCable',
   'ctxDelete',
@@ -355,6 +395,104 @@ registerPublicApi('workflows', {
   'ctxStatus',
   'ctxToggleBroken',
 ]);
+
+async function loadMaintenanceList(){
+  const data=await api('GET',papi('/maintenance'));
+  if(!data) return;
+  DB.maintenance=Array.isArray(data.items)?data.items:[];
+  renderMaintenanceList();
+}
+
+function renderMaintenanceList(){
+  const list=document.getElementById('maintenance-list');
+  if(!list) return;
+  const schedules=DB.maintenance||[];
+  if(!schedules.length){list.innerHTML='<div style="font-size:11px;color:var(--text3);text-align:center;padding:12px">Nenhuma manutenção agendada.</div>';return;}
+  const statusColors={agendada:'var(--blue)',em_andamento:'var(--orange)',concluida:'var(--green)',cancelada:'var(--text3)'};
+  const priorityLabels={normal:'Normal',alta:'Alta',urgente:'Urgente'};
+  const typeLabels={preventiva:'Preventiva',corretiva:'Corretiva',emergencia:'Emergência',expansao:'Expansão'};
+  list.innerHTML=schedules.map(s=>{
+    const sc=statusColors[s.status]||'var(--text3)';
+    const elName=s.element_id?DB.elements.find(e=>e.id===s.element_id)?.nome||'#'+s.element_id:'';
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--text1)">${esc(s.title)}</div>
+        <div style="font-size:10px;color:var(--text3)">${esc(typeLabels[s.type]||s.type||'')} · ${esc(s.scheduled_date||'Sem data')}${elName?' · '+esc(elName):''} ${s.assigned_to?'· '+esc(s.assigned_to):''}</div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <span style="font-size:10px;font-weight:600;color:${sc}">${esc(s.status||'')}</span>
+        <button class="btn-ghost" style="padding:2px 6px;font-size:10px" onclick="openMaintenanceModal(${s.id})">✏️</button>
+        <button class="btn-danger" style="padding:2px 6px;font-size:10px" onclick="deleteMaintenance(${s.id})">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openMaintenanceModal(editId){
+  const sel=document.getElementById('maint-element');
+  if(sel){
+    sel.innerHTML='<option value="">Nenhum</option>'+
+      DB.elements.map(e=>`<option value="${e.id}">${esc(e.nome)} (${esc(e.tipo)})</option>`).join('');
+  }
+  if(editId){
+    const s=(DB.maintenance||[]).find(m=>m.id===editId);
+    if(!s) return;
+    document.getElementById('maint-id').value=s.id;
+    document.getElementById('maint-title').value=s.title||'';
+    document.getElementById('maint-type').value=s.type||'preventiva';
+    document.getElementById('maint-priority').value=s.priority||'normal';
+    document.getElementById('maint-date').value=s.scheduled_date||'';
+    document.getElementById('maint-assigned').value=s.assigned_to||'';
+    document.getElementById('maint-element').value=s.element_id||'';
+    document.getElementById('maint-status').value=s.status||'agendada';
+    document.getElementById('maint-description').value=s.description||'';
+    document.getElementById('maintenance-modal-title').textContent='🗓️ Editar Manutenção';
+  } else {
+    document.getElementById('maint-id').value='';
+    document.getElementById('maint-title').value='';
+    document.getElementById('maint-type').value='preventiva';
+    document.getElementById('maint-priority').value='normal';
+    document.getElementById('maint-date').value='';
+    document.getElementById('maint-assigned').value='';
+    document.getElementById('maint-element').value='';
+    document.getElementById('maint-status').value='agendada';
+    document.getElementById('maint-description').value='';
+    document.getElementById('maintenance-modal-title').textContent='🗓️ Agendar Manutenção';
+  }
+  openModal('modal-maintenance');
+}
+
+async function saveMaintenance(){
+  const id=document.getElementById('maint-id').value;
+  const payload={
+    title:document.getElementById('maint-title').value.trim(),
+    type:document.getElementById('maint-type').value,
+    priority:document.getElementById('maint-priority').value,
+    scheduled_date:document.getElementById('maint-date').value,
+    assigned_to:document.getElementById('maint-assigned').value.trim(),
+    element_id:document.getElementById('maint-element').value?parseInt(document.getElementById('maint-element').value):null,
+    status:document.getElementById('maint-status').value,
+    description:document.getElementById('maint-description').value.trim(),
+  };
+  if(!payload.title){toast('⚠️ Título obrigatório','error');return;}
+  let saved;
+  if(id){
+    saved=await api('PUT',papi(`/maintenance/${id}`),payload);
+  } else {
+    saved=await api('POST',papi('/maintenance'),payload);
+  }
+  if(!saved) return;
+  await loadMaintenanceList();
+  closeModal('modal-maintenance');
+  toast('🗓️ Manutenção salva!','success');
+}
+
+async function deleteMaintenance(id){
+  if(!confirm('Remover este agendamento?')) return;
+  await api('DELETE',papi(`/maintenance/${id}`));
+  await loadMaintenanceList();
+  toast('🗓️ Manutenção removida','success');
+}
 
 // ═══════════════════════════════════════════════════════
 // EXPORT

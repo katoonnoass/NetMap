@@ -2,10 +2,11 @@
 Rotas de auditoria e visao operacional.
 """
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, current_app
 
 from ..services import audit_service, project_service, summary_service
-from ..utils.auth import require_login
+from ..services.snapshot_service import take_snapshot, get_snapshots
+from ..utils.auth import require_login, require_perm
 from ..utils.query import (
     parse_pagination,
     parse_sorting,
@@ -37,7 +38,10 @@ def get_project_audit(pid):
         event for event in audit_service.load_events() if event.get("project_id") == pid
     ]
 
-    # Apply search, sorting
+    entity_id = request.args.get("entity_id", "").strip()
+    if entity_id:
+        items = [e for e in items if str(e.get("entity_id") or "") == entity_id]
+
     search = parse_search()
     sort, order = parse_sorting(["timestamp", "action", "username"])
 
@@ -45,7 +49,6 @@ def get_project_audit(pid):
         items = apply_search(items, search, ["action", "message", "username"])
     items = apply_sorting(items, sort, order)
 
-    # Paginate (with legacy ?limit= compatibility)
     p = _paginate_with_limit_compat()
     items, meta = paginate(items, p)
 
@@ -78,3 +81,23 @@ def get_global_audit():
     items, meta = paginate(items, p)
 
     return jsonify({"items": items, **meta})
+
+
+@audit_bp.route("/api/projects/<pid>/snapshots", methods=["POST"])
+@require_perm("edit_elements")
+def create_snapshot(pid):
+    db = project_service.load_project(pid)
+    if not db:
+        return jsonify({"error": "Not found"}), 404
+    data_dir = current_app.config.get("DATA_DIR", "data")
+    snap = take_snapshot(db, pid, data_dir)
+    return jsonify(snap)
+
+
+@audit_bp.route("/api/projects/<pid>/snapshots")
+@require_login
+def list_snapshots(pid):
+    days = max(1, min(int(request.args.get("days", 30)), 365))
+    data_dir = current_app.config.get("DATA_DIR", "data")
+    snapshots = get_snapshots(pid, data_dir, days)
+    return jsonify({"snapshots": snapshots})

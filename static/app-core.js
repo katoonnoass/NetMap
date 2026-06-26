@@ -37,12 +37,14 @@ async function apiUpload(method,path,formData){
 const papi=path=>`/api/projects/${currentProjectId}${path}`;
 
 async function loadAll(){
-  const [els,conns,dios,pos,incidents,customers,cables]=await Promise.all([
+  const [els,conns,dios,pos,incidents,customers,cables,fences,maint]=await Promise.all([
     api('GET',papi('/elements')),api('GET',papi('/connections')),
     api('GET',papi('/dios')),api('GET',papi('/positions')),
     api('GET',papi('/incidents')),
     api('GET',papi('/customers')),
     api('GET',papi('/cables')),
+    api('GET',papi('/fences')),
+    api('GET',papi('/maintenance')),
   ]);
   DB.elements=Array.isArray(els)?els:(els?.items||[]);
   DB.connections=Array.isArray(conns)?conns:(conns?.items||[]);
@@ -52,6 +54,8 @@ async function loadAll(){
 
   DB.customers=Array.isArray(customers)?customers:(customers?.items||[]);
   DB.cables=Array.isArray(cables?.cables)?cables.cables:(cables?.items||[]);
+  DB.geofences=Array.isArray(fences)?fences:(fences?.items||[]);
+  DB.maintenance=Array.isArray(maint)?maint:(maint?.items||[]);
 }
 
 async function loadProjectInsights(){
@@ -63,6 +67,36 @@ async function loadProjectInsights(){
   dashboardSummary = summary && typeof summary === 'object' ? summary : null;
   projectAudit = Array.isArray(audit) ? audit : (audit?.items || []);
   topologyHealth = health && typeof health === 'object' ? health : null;
+}
+
+let _sseSource=null;
+function startSSEListener(){
+  if(_sseSource) return;
+  try{
+    _sseSource=new EventSource('/api/events');
+    _sseSource.onmessage=function(ev){
+      try{
+        const d=JSON.parse(ev.data);
+        const evt=d.event;
+        if(!evt||!currentProjectId) return;
+        if(d.project_id&&d.project_id!==currentProjectId) return;
+        if(evt.startsWith('element_')||evt.startsWith('connection_')){
+          toast('📡 Dados atualizados — recarregando...','warn');
+          loadAll().then(()=>{
+            refreshAllMarkers();
+            refreshAllCables();
+            refreshAllFences();
+            updateStats();renderSidebar();renderTable();
+          });
+        }
+      }catch(e){}
+    };
+    _sseSource.onerror=function(){
+      _sseSource.close();
+      _sseSource=null;
+      setTimeout(startSSEListener,10000);
+    };
+  }catch(e){}
 }
 
 function showProjectAlerts(){

@@ -46,6 +46,7 @@ def create_incident(project: dict, payload: dict) -> dict:
         "assigned_to": str(payload.get("assigned_to", "")).strip(),
         "element_id": payload.get("element_id"),
         "notes": str(payload.get("notes", "")).strip(),
+        "comments": [],
         "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
 
@@ -97,3 +98,21 @@ def delete_incident(project: dict, incident_id: int) -> bool:
     if len(project["incidents"]) == before:
         return False
     return True
+
+
+def add_comment(project: dict, incident_id: int, author: str, text: str) -> dict | None:
+    incident = next(
+        (item for item in project.get("incidents", []) if int(item.get("id")) == incident_id),
+        None,
+    )
+    if not incident:
+        return None
+    comments = incident.setdefault("comments", [])
+    comment = {
+        "id": len(comments) + 1,
+        "author": author,
+        "text": text.strip(),
+        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    comments.append(comment)
+    return comment

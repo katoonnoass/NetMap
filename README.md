@@ -32,6 +32,7 @@
 - [Tipos de Cabos](#tipos-de-cabos)
 - [Ferramentas](#ferramentas)
 - [Estrutura do Projeto](#estrutura-do-projeto)
+- [FASE 4-7 — Recursos Avançados](#fase-4-7--recursos-avançados)
 
 ---
 
@@ -42,8 +43,8 @@ O **ISP NetMap Pro** é uma aplicação Flask de página única (SPA) projetada 
 - **Mapa geográfico interativo** com Leaflet — posicione elementos, trace cabos com waypoints, meça distâncias
 - **Topologia de rede** visual com vis-network — diagrama interativo com fusões de fibra
 - **Painéis DIO/CTO** — gerencie portas, fusões de fibra, splitters e ocupação
-- **Dashboard** com métricas em tempo real, gráficos de pizza e score de validação
-- **Incidentes** com status, severidade, categorias e vínculo a elementos
+- **Dashboard** com métricas em tempo real, gráficos de pizza, sparklines de tendência e score de validação
+- **Incidentes** com status, severidade, categorias, vínculo a elementos e comentários
 - **Auditoria** completa — toda alteração registrada com timestamp, usuário e detalhes
 - **Integração IXC Soft** — sincronize contratos, clientes e viabilidade
 
@@ -62,6 +63,9 @@ Toda a interface é em **português brasileiro**. Suporta tema claro/escuro com 
 - Legenda interativa com grupos Core e Rua
 - Clustering de marcadores automático
 - Pesquisa global de elementos, clientes e cabos
+- Pesquisa por raio com slider ajustável (100–5000m)
+- Mapa de calor com seletor de fonte (elementos, clientes, incidentes)
+- Impressão/PDF do mapa via captura de canvas
 
 ### Topologia
 - Diagrama de rede interativo (arraste, zoom, seleção)
@@ -92,12 +96,15 @@ Toda a interface é em **português brasileiro**. Suporta tema claro/escuro com 
 - 34 tipos de cabo pré-definidos (tronco, distribuição, derivação, drop, indoor, elétrico)
 - 24 cores de fibra (12 tubos + 12 anilhas)
 - Edição modal com redraw de rota no mapa
+- Distância automática via Haversine (considera waypoints)
+- Suporte a cabos rascunho (tracejado, 45% opacidade)
 
 ### Incidentes
 - CRUD completo com status (aberto, em andamento, resolvido, fechado)
 - Severidades: baixa, média, alta, **crítica**
 - Categorias: rede, hardware, software, segurança, atendimento, outro
 - Vínculo a elementos e navegação direta
+- **Comentários** com timeline e registro de autor/data
 
 ### Clientes
 - Listagem derivada de elementos tipo `cliente`
@@ -110,6 +117,8 @@ Toda a interface é em **português brasileiro**. Suporta tema claro/escuro com 
 - Gráfico de pizza por tipo de elemento (interativo com legenda clicável)
 - Score de validação topológica com barra de progresso colorida
 - Alertas automáticos (cabos rompidos, incidentes abertos)
+- Sparklines de tendência (365 dias): elementos/clientes, cabos/metragem, incidentes/rompidos
+- Ocupação CTO global e por projeto
 
 ### Relatórios
 - Tabela de ocupação CTO
@@ -128,6 +137,101 @@ Toda a interface é em **português brasileiro**. Suporta tema claro/escuro com 
 - Consulta de viabilidade
 - Proteção SSRF (bloqueia IPs privados)
 
+### Backup e Restore
+- **Exportar backup** — ZIP com `project.json` + pasta de fotos
+- **Restaurar backup** — sobrescreve dados do projeto ativo
+- Botões na barra de ferramentas principal
+
+### Histórico por Elemento
+- Filtro `?entity_id=` no endpoint de auditoria
+- Seção "Histórico" no painel lateral do elemento
+- Exibe ações relevantes (criação, edição, exclusão)
+
+### Distância Automática do Cabo
+- Cálculo automático via fórmula de Haversine ao criar/editar cabo
+- Distância total considerando waypoints intermediários
+- Atualização em tempo real no modal de cabo
+
+### Pesquisa por Raio no Mapa
+- Modo de busca circular com slider de raio (100–5000m)
+- Clique no mapa define centro, elementos dentro do raio são destacados
+- Display do raio selecionado em metros
+
+### Impressão/PDF do Mapa
+- Captura do canvas Leaflet via `leaflet-image.js`
+- Geração de PDF com `jsPDF` (A4, orientação paisagem)
+- Download direto do arquivo PDF
+
+### Cálculo de Atenuação Óptica
+- Estimativa de nível de sinalvia `GET /api/projects/<pid>/signal/<element_id>`
+- Perdas: fibra (0.35dB/km), conector (0.5dB), splitter (1:2=3.5dB, 1:4=7dB)
+- TX: +3dBm, alerta -25dBm, crítico -28dBm
+- Exibição no modal de traceroute com itens de perda
+
+### Modo Rascunho/Planejamento
+- Campo `draft` em elementos e conexões
+- Toggle 📐 no toolbar ativa modo rascunho
+- Elementos rascunho: borda tracejada + badge "R" + 50% opacidade
+- Cabos rascunho: linha tracejada + 45% opacidade
+- Botão "Promover para Real" converte rascunho em definitivo
+- Checkbox na legenda controla visibilidade de rascunhos
+
+### Dashboard Avançado
+- Snapshots diários automáticos (até 365 dias)
+- 3 sparklines de tendência: elementos/clientes, cabos/metragem, incidentes/rompidos
+- Contagem automática de ocupação CTO (global e por projeto)
+- Seção de ocupação CTO na aba de validação
+
+### Mapa de Calor
+- Camada de calor via `leaflet-heat.js`
+- Toggle on/off e seletor de fonte (elementos, clientes, incidentes)
+- Controles integrados na legenda do mapa
+
+### Notificações SSE (Server-Sent Events)
+- Endpoint `GET /api/events` com stream SSE e keepalive a cada 15s
+- Pub/sub em memória com `queue.Queue` por subscriber
+- Broadcast automático em CRUD de elementos/conexões
+- Frontend reconecta automaticamente (10s de delay)
+- Toast de notificação em mudanças de dados por outros usuários
+
+### API Keys (Integração Externa)
+- Geração de chaves API com prefixo `nm_` + 24 hex chars
+- CRUD completo: `GET/POST/PUT/DELETE /api/apikeys`
+- Autenticação Bearer token (bypass CSRF para API keys)
+- Revogação e exclusão com registro de uso
+- UI de gerenciamento no modal de usuários
+
+### Geocercas
+- CRUD completo de geocercas poligonais
+- Modo 🛡️ no toolbar: clique para adicionar vértices, duplo-clique para finalizar
+- Polígonos renderizados no mapa com tooltip
+- Endpoint `GET /fences/<id>/elements` lista elementos dentro da cerca
+- Algoritmo point-in-polygon para detecção
+
+### Agendamento de Manutenção
+- CRUD de agendamentos com data, tipo, descrição, elemento vinculado
+- Endpoint `GET /maintenance/upcoming` para próximos agendamentos
+- Seção 🗓️ abaixo da aba de incidentes
+- Modal de criação/edição de agendamento
+
+### Gestão de Postes
+- Campos específicos: altura, material, proprietário, última inspeção
+- Seção dedicada no painel lateral para atributos de poste
+- Botão "Registrar Inspeção" preenche data automaticamente
+- Campos condicionais no modal de edição
+
+### Comparação de Projetos
+- Endpoint `GET /api/projects/compare?a=<pid>&b=<pid>`
+- Modal 📊 com seleção de dois projetos
+- Grid de diferenças: contagem por tipo e status
+- Quebra por tipo de elemento com indicadores +/-/=
+
+### PWA / Offline
+- Manifesto `manifest.json` (standalone, tema #1A73E8)
+- Service Worker com cache-first e precache de assets estáticos
+- Network-first fallback para URLs não-API
+- Instalável como app no desktop e mobile
+
 ### Fotos
 - Upload de fotos (JPG/PNG/WEBP, máx 5MB)
 - Validação por magic bytes
@@ -142,9 +246,11 @@ Toda a interface é em **português brasileiro**. Suporta tema claro/escuro com 
 |---|---|
 | Backend | Python 3.10, Flask 3.x, Gunicorn |
 | Banco de Dados | PostgreSQL 16 (produção) / JSON files (desenvolvimento) |
-| Mapa | Leaflet 1.1.1 + MarkerCluster 1.5.3 (vendor local) |
+| Mapa | Leaflet 1.1.1 + MarkerCluster 1.5.3 + leaflet-heat (vendor local) |
 | Topologia | vis-network (vendor local) |
-| Frontend | Vanilla JS (sem build step), CSS custom properties |
+| PDF | jsPDF (vendor local, carga lazy) |
+| Frontend | Vanilla JS (sem build step), CSS custom properties, PWA |
+| SSE | Server-Sent Events com keepalive e auto-reconexão |
 | Autenticação | Flask-WTF CSRF, Werkzeug password hashing, session-based |
 | Rate Limiting | Flask-Limiter (Redis ou in-memory) |
 | Compressão | Flask-Compress, zstd |
@@ -292,55 +398,70 @@ NetMap/
 ├── app/                        # Aplicação Flask
 │   ├── __init__.py             # Factory (create_app), blueprints, middleware
 │   ├── config.py               # Configuração, permissões, constantes
-│   ├── routes/                 # 15 blueprints REST
+│   ├── routes/                 # 20 blueprints REST
 │   │   ├── auth.py             # Login, logout, CSRF, senha
 │   │   ├── users.py            # CRUD de usuários
-│   │   ├── projects.py         # CRUD de projetos, import/export
+│   │   ├── projects.py         # CRUD de projetos, import/export, compare
 │   │   ├── elements.py         # CRUD de elementos, bulk ops, CSV
 │   │   ├── connections.py      # CRUD de conexões/cabos
 │   │   ├── dios.py             # CRUD de DIOs e portas
 │   │   ├── ctos.py             # Portas CTO, bulk update, splitter
-│   │   ├── incidents.py        # CRUD de incidentes
+│   │   ├── incidents.py        # CRUD de incidentes, comentários
 │   │   ├── customers.py        # Listagem de clientes
-│   │   ├── network_ops.py      # Cabos, saúde topológica, traceroute
-│   │   ├── audit.py            # Log de auditoria
+│   │   ├── network_ops.py      # Cabos, saúde, traceroute, sinal óptico
+│   │   ├── audit.py            # Log de auditoria, snapshots
 │   │   ├── integrations.py     # IXC Soft (config, test, sync, viabilidade)
 │   │   ├── photos.py           # Upload e serve de fotos
 │   │   ├── address_cache.py    # Cache de CEP/endereços
-│   │   └── static_files.py     # Serve vis-network com gzip
+│   │   ├── static_files.py     # Serve vis-network com gzip
+│   │   ├── backup.py           # Export/import ZIP backup
+│   │   ├── fences.py           # CRUD de geocercas + elementos na cerca
+│   │   ├── maintenance.py      # CRUD de agendamentos de manutenção
+│   │   ├── apikeys.py          # CRUD de chaves API
+│   │   └── sse.py              # SSE stream endpoint
 │   ├── services/               # Lógica de negócio
 │   │   ├── project_service.py  # Projetos, normalização, seed
-│   │   ├── element_service.py  # Elementos, cascata, bulk
-│   │   ├── connection_service.py # Conexões
+│   │   ├── element_service.py  # Elementos, cascata, bulk, draft, poste
+│   │   ├── connection_service.py # Conexões, draft
 │   │   ├── dio_service.py      # DIOs e portas
 │   │   ├── cto_service.py      # CTOs, bulk update, splitter
-│   │   ├── incident_service.py # Incidentes
+│   │   ├── incident_service.py # Incidentes, comentários
 │   │   ├── user_service.py     # Usuários, lockout, rotação de senha
 │   │   ├── audit_service.py    # Auditoria (5000 eventos)
 │   │   ├── network_service.py  # Saúde, score, traceroute BFS
+│   │   ├── optical_service.py  # Cálculo de atenuação óptica
 │   │   ├── ixc_service.py      # Integração IXC, SSRF protection
 │   │   ├── geodata_service.py  # KML/KMZ import/export
-│   │   ├── summary_service.py  # Dashboard, resumo
+│   │   ├── summary_service.py  # Dashboard, resumo, ocupação CTO
+│   │   ├── snapshot_service.py # Snapshots diários para tendências
+│   │   ├── backup_service.py   # Backup/restore ZIP com fotos
+│   │   ├── fence_service.py    # Geocercas, point-in-polygon
+│   │   ├── maintenance_service.py # Agendamento de manutenção
+│   │   ├── apikey_service.py   # Chaves API (geração, validação, revogação)
+│   │   ├── sse_service.py      # Pub/sub SSE em memória
 │   │   ├── photo_service.py    # Fotos, validação magic bytes
 │   │   └── address_cache_service.py # Cache CEP
 │   └── utils/
-│       ├── auth.py             # Decoradores require_login, require_perm
+│       ├── auth.py             # Decoradores require_login, require_perm, Bearer auth
 │       ├── storage.py          # Dual-backend (JSON/Postgres), OCC
-│       └── query.py            # Paginação, sorting, filtros compartilhados
+│       ├── query.py            # Paginação, sorting, filtros compartilhados
+│       └── notify.py           # Helper de broadcast SSE para mudanças de dados
 ├── static/                     # Frontend (sem build step)
 │   ├── app.js → app-core.js   # API, CRUD, toast
-│   ├── app-auth.js            # Login/logout, gestão de usuários
-│   ├── app-map.js             # Mapa Leaflet, markers, cabos, medida
-│   ├── app-management.js      # DIO, CTO, fotos, modais, focus trap
-│   ├── app-views.js           # Dashboard, tabela, validação, relatórios
-│   ├── app-workflows.js       # Busca global, import, alertas, incidentes
-│   ├── app-shell.js           # Sidebar, tabs, painel, ctx-menu, bulk
-│   ├── app-state.js           # Estado global, TYPE_CONFIG, constantes
+│   ├── app-auth.js            # Login/logout, gestão de usuários, API keys, SSE
+│   ├── app-map.js             # Mapa Leaflet, markers, cabos, medida, calor, cercas, rascunho
+│   ├── app-management.js      # DIO, CTO, fotos, modais, focus trap, poste, draft
+│   ├── app-views.js           # Dashboard, tabela, validação, relatórios, sparklines, compare
+│   ├── app-workflows.js       # Busca global, import, alertas, incidentes, manutenção
+│   ├── app-shell.js           # Sidebar, tabs, painel, ctx-menu, bulk, backup
+│   ├── app-state.js           # Estado global, TYPE_CONFIG, constantes, draftMode
 │   ├── app-theme.js           # Tema claro/escuro, localStorage
 │   ├── app.css                # Estilos, CSS variables, responsivo
-│   └── vendor/                 # Leaflet, MarkerCluster (local)
+│   ├── manifest.json          # PWA manifest
+│   ├── sw.js                  # Service Worker (cache-first, precache)
+│   └── vendor/                 # Leaflet, MarkerCluster, leaflet-heat, jspdf (local)
 ├── templates/
-│   ├── index.html             # SPA principal (18 modais, 12 abas)
+│   ├── index.html             # SPA principal (22 modais, 12 abas), PWA meta
 │   └── login.html             # Página de login
 ├── data/                       # JSON mode (desenvolvimento)
 │   ├── users.json
@@ -397,6 +518,7 @@ NetMap/
 | `POST` | `/api/projects/<pid>/import-geodata` | Importar KML/KMZ |
 | `POST` | `/api/projects/<pid>/import-json` | Importar JSON (mesclar/substituir) |
 | `GET` | `/api/projects/<pid>/report` | Relatório HTML |
+| `GET` | `/api/projects/compare` | Comparar dois projetos (?a=&b=) |
 
 ### Elementos
 
@@ -448,6 +570,7 @@ NetMap/
 | `POST` | `/api/projects/<pid>/incidents` | Criar |
 | `PUT` | `/api/projects/<pid>/incidents/<id>` | Atualizar |
 | `DELETE` | `/api/projects/<pid>/incidents/<id>` | Excluir |
+| `POST` | `/api/projects/<pid>/incidents/<id>/comments` | Adicionar comentário |
 
 ### Rede
 
@@ -456,6 +579,7 @@ NetMap/
 | `GET` | `/api/projects/<pid>/cables` | Inventário de cabos |
 | `GET` | `/api/projects/<pid>/topology-health` | Score e issues |
 | `GET` | `/api/projects/<pid>/trace/<start_id>` | Caminho óptico (BFS) |
+| `GET` | `/api/projects/<pid>/signal/<element_id>` | Atenuação óptica e nível de sinal |
 
 ### IXC Soft
 
@@ -467,11 +591,60 @@ NetMap/
 | `POST` | `/api/integrations/ixc/viability` | Viabilidade |
 | `POST` | `/api/projects/<pid>/integrations/ixc/sync` | Sincronizar |
 
+### Backup
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| `GET` | `/api/backup` | Download ZIP (project.json + fotos) |
+| `POST` | `/api/restore-backup` | Restaurar backup (multipart) |
+
+### Geocercas
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| `GET` | `/api/fences` | Listar geocercas |
+| `POST` | `/api/fences` | Criar geocerca |
+| `PUT` | `/api/fences/<id>` | Atualizar |
+| `DELETE` | `/api/fences/<id>` | Excluir |
+| `GET` | `/api/fences/<id>/elements` | Elementos dentro da cerca |
+
+### Manutenção
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| `GET` | `/api/maintenance` | Listar agendamentos |
+| `POST` | `/api/maintenance` | Criar agendamento |
+| `PUT` | `/api/maintenance/<id>` | Atualizar |
+| `DELETE` | `/api/maintenance/<id>` | Excluir |
+| `GET` | `/api/maintenance/upcoming` | Próximos agendamentos |
+
+### API Keys
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| `GET` | `/api/apikeys` | Listar chaves |
+| `POST` | `/api/apikeys` | Criar chave |
+| `PUT` | `/api/apikeys/<id>` | Atualizar (revogar) |
+| `DELETE` | `/api/apikeys/<id>` | Excluir chave |
+
+### SSE
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| `GET` | `/api/events` | Stream SSE (mudanças em tempo real) |
+
+### Snapshots
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| `GET` | `/api/snapshots` | Listar snapshots diários |
+| `POST` | `/api/snapshots` | Criar snapshot manual |
+
 ### Outros
 
 | Método | Endpoint | Descrição |
 |---|---|---|
-| `GET` | `/api/projects/<pid>/audit` | Auditoria do projeto |
+| `GET` | `/api/projects/<pid>/audit` | Auditoria do projeto (filtro: entity_id) |
 | `GET` | `/api/projects/<pid>/summary` | Resumo/dashboard |
 | `GET` | `/api/audit` | Auditoria global |
 | `GET` | `/api/projects/<pid>/customers` | Clientes |
@@ -491,6 +664,7 @@ NetMap/
 | `sort` | Campo de ordenação |
 | `order` | `asc` ou `desc` |
 | `search` | Busca full-text |
+| `entity_id` | Filtrar auditoria por elemento/conexão específica |
 
 ---
 
@@ -498,12 +672,13 @@ NetMap/
 
 | Medida | Detalhe |
 |---|---|
-| CSRF | Flask-WTF em todos os POST/PUT/DELETE |
+| CSRF | Flask-WTF em todos os POST/PUT/DELETE (bypass para Bearer API keys) |
 | Rate Limiting | 200/dia + 50/hora (login: 10/min, senha: 5/min) |
 | Password Hashing | Werkzeug (pbkdf2:sha256), migração automática de SHA-256 legado |
 | Password Policy | Mín 12 chars + maiúscula + minúscula + dígito |
 | Account Lockout | 5 tentativas falhas → 5 min bloqueio |
 | Session | HttpOnly, SameSite=Lax, 12h expiração |
+| API Keys | Prefixo `nm_`, Bearer token auth, revogação, bypass CSRF |
 | CSP | `default-src 'self'`, `frame-ancestors 'none'`, `object-src 'none'` |
 | HSTS | `max-age=63072000; includeSubDomains; preload` (HTTPS) |
 | XSS | `esc()` global em todos os `innerHTML` com dados do DB |
@@ -596,19 +771,25 @@ NEW_ADMIN_PASSWORD=NovaSenha123 .venv/bin/python tools/rotate_admin_password.py
   "description": "Descrição do projeto",
   "created_at": "2025-01-01T00:00:00",
   "elements": [
-    {"id": 1, "nome": "OLT Central", "tipo": "olt", "status": "ativo", "lat": -16.82, "lng": -49.24}
+    {"id": 1, "nome": "OLT Central", "tipo": "olt", "status": "ativo", "lat": -16.82, "lng": -49.24, "draft": false}
   ],
   "connections": [
-    {"id": 100, "from": 1, "to": 2, "porta": "1", "fibra": "1", "cor": "Azul", "broken": false, "length": 350, "waypoints": []}
+    {"id": 100, "from": 1, "to": 2, "porta": "1", "fibra": "1", "cor": "Azul", "broken": false, "length": 350, "waypoints": [], "draft": false}
   ],
   "dios": [
     {"id": "DIO-01", "name": "DIO Central", "capacity": 24, "ports": []}
   ],
   "incidents": [
-    {"id": 300, "title": "Rompimento", "status": "open", "severity": "critical", "category": "rede", "element_id": 5}
+    {"id": 300, "title": "Rompimento", "status": "open", "severity": "critical", "category": "rede", "element_id": 5, "comments": []}
   ],
   "positions": {"1": {"x": 100, "y": 200}},
   "cto_ports": {"7": [{"num": 1, "status": "livre", "client_id": null, "obs": ""}]},
+  "geofences": [
+    {"id": "f1", "name": "Zona Norte", "points": [{"lat": -16.8, "lng": -49.2}], "color": "#ff0000"}
+  ],
+  "maintenance": [
+    {"id": "m1", "element_id": 1, "type": "preventiva", "scheduled_date": "2025-03-01", "description": "Inspeção"}
+  ],
   "_nextId": 321
 }
 ```
@@ -637,6 +818,33 @@ NEW_ADMIN_PASSWORD=NovaSenha123 .venv/bin/python tools/rotate_admin_password.py
 | `closed` | Fechado | `critical` | Crítica |
 
 **Categorias**: rede, hardware, software, segurança, atendimento, outro
+
+---
+
+## FASE 4-7 — Recursos Avançados
+
+Resumo das funcionalidades implementadas nas FASEs 4 a 7:
+
+| FASE | Recurso | Destaques |
+|---|---|---|
+| 4.1 | Backup/Restore UI | ZIP com project.json + fotos, botões na toolbar |
+| 4.2 | Histórico por Elemento | Filtro `entity_id` na auditoria, seção no painel lateral |
+| 4.3 | Distância Automática do Cabo | Haversine com waypoints, auto-cálculo no modal |
+| 4.4 | Pesquisa por Raio | Modo circular, slider 100-5000m, clique no mapa |
+| 4.5 | Impressão/PDF | leaflet-image + jsPDF, captura canvas, A4 paisagem |
+| 5.1 | Atenuação Óptica | Perda fibra/conector/splitter, TX +3dBm, warning/critical |
+| 5.2 | Modo Rascunho | Campo `draft`, toggle, promover para real, visibilidade |
+| 5.3 | Dashboard Avançado | Snapshots diários, sparklines 365 dias, ocupação CTO |
+| 5.4 | Contagem CTO | Ocupação global e por projeto, seção na validação |
+| 5.5 | Mapa de Calor | leaflet-heat.js, toggle, seletor de fonte |
+| 6.1 | Notificações SSE | Stream com keepalive, pub/sub, auto-reconnect, toast |
+| 6.2 | API Keys | Chaves `nm_`, CRUD, Bearer auth, bypass CSRF |
+| 6.3 | Geocercas | Polígonos, point-in-polygon, elementos na cerca |
+| 6.4 | Agendamento Manutenção | CRUD, upcoming, seção na sidebar |
+| 7.1 | Gestão Postes | Campos específicos, inspeção, edição condicional |
+| 7.2 | Comentários Incidentes | Timeline, autor/data, POST comments |
+| 7.3 | Comparação Projetos | Grid diff, contagem por tipo, indicadores +/-/= |
+| 7.4 | PWA/Offline | manifest.json, SW cache-first, instalável |
 
 ---
 

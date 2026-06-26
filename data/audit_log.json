@@ -4162,5 +4162,29 @@
     "entity_id": "admin",
     "message": "Login realizado por \"admin\"",
     "extra": {}
+  },
+  {
+    "timestamp": "2026-06-26 16:22:19",
+    "project_id": "novo_projeto",
+    "action": "positions_saved",
+    "username": "admin",
+    "entity_type": "project",
+    "entity_id": "novo_projeto",
+    "message": "Posicoes da topologia atualizadas",
+    "extra": {
+      "count": 12
+    }
+  },
+  {
+    "timestamp": "2026-06-26 16:22:22",
+    "project_id": "novo_projeto",
+    "action": "positions_saved",
+    "username": "admin",
+    "entity_type": "project",
+    "entity_id": "novo_projeto",
+    "message": "Posicoes da topologia atualizadas",
+    "extra": {
+      "count": 12
+    }
   }
 ]

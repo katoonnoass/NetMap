@@ -7,6 +7,7 @@ from flask import Blueprint, jsonify, request, session
 from .. import limiter
 from ..services import audit_service, element_service, project_service
 from ..utils.auth import require_login, require_perm
+from ..utils.notify import notify_change
 from ..utils.query import (
     parse_pagination,
     parse_sorting,
@@ -76,6 +77,7 @@ def add_element(pid):
         message=f'Elemento "{element.get("nome", element["id"])}" criado',
         extra={"tipo": element.get("tipo")},
     )
+    notify_change("element_created", pid, element_id=element["id"], nome=element.get("nome",""))
     return jsonify(element), 201
 
 
@@ -106,6 +108,7 @@ def update_element(pid, eid):
         message=f'Elemento "{element.get("nome", eid)}" atualizado',
         extra={"tipo": element.get("tipo")},
     )
+    notify_change("element_updated", pid, element_id=eid, nome=element.get("nome",""))
     return jsonify(element)
 
 
@@ -132,6 +135,7 @@ def delete_element(pid, eid):
         message=f'Elemento "{element.get("nome", eid) if element else eid}" removido',
         extra={"tipo": element.get("tipo") if element else ""},
     )
+    notify_change("element_deleted", pid, element_id=eid)
     return jsonify({"ok": True})
 
 

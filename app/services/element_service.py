@@ -7,7 +7,8 @@ from . import project_service
 
 ALLOWED_ELEMENT_FIELDS = {
     "nome", "tipo", "status", "lat", "lng", "endereco", "cep",
-    "detalhes", "observacao", "modelo", "capacity",
+    "detalhes", "observacao", "modelo", "capacity", "draft",
+    "altura", "material", "proprietario", "ultima_inspecao",
 }
 
 

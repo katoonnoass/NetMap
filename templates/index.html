@@ -12,9 +12,13 @@
 <script>(function(){var t=localStorage.getItem('netmap-theme')||'light';document.documentElement.setAttribute('data-theme',t);})();</script>
 <script src="/static/vis-network.min.js"></script>
 <script src="/static/vendor/leaflet/leaflet.js?v=1.9.4"></script>
+<script src="/static/vendor/leaflet/leaflet-image.js?v=0.4.0"></script>
+<script src="/static/vendor/leaflet/leaflet-heat.js?v=0.2.0"></script>
 <script src="/static/vendor/leaflet-markercluster/leaflet.markercluster.js?v=1.5.3"></script>
 <link rel="stylesheet" href="/static/app.css?v=9"/>
-    <meta name="csrf-token" content="{{ csrf_token() }}">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<meta name="theme-color" content="#1A73E8">
+<script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/static/sw.js').catch(()=>{});}</script>
 </head>
 <body>
 
@@ -58,6 +62,7 @@
 </div>
 <input type="file" id="geo-import-input" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz" style="display:none" onchange="handleGeoImport(event)" aria-hidden="true" tabindex="-1">
 <input type="file" id="json-import-input" accept=".json,application/json" style="display:none" onchange="handleJsonImport(event)" aria-hidden="true" tabindex="-1">
+<input type="file" id="backup-restore-input" accept=".zip,application/zip,application/x-zip-compressed" style="display:none" onchange="handleBackupRestore(event)" aria-hidden="true" tabindex="-1">
 
 <!-- MAIN -->
 <div id="main-layout">
@@ -103,6 +108,11 @@
           <button class="btn-ghost" onclick="exportKmz()" style="padding:6px 10px;font-size:11px">KMZ</button>
           <button class="btn-ghost" onclick="exportData()" style="padding:6px 10px;font-size:11px">JSON</button>
         </div>
+        <div class="action-divider"></div>
+        <button class="btn-ghost" onclick="exportBackup()" style="padding:6px 10px;font-size:11px">💾 Backup</button>
+        <button class="btn-ghost" onclick="triggerBackupRestore()" style="padding:6px 10px;font-size:11px">📂 Restaurar</button>
+        <div class="action-divider"></div>
+        <button class="btn-ghost" onclick="printMap()" style="padding:6px 10px;font-size:11px">🖨️ Imprimir Mapa</button>
         <div class="action-divider"></div>
         <button class="btn-ghost" onclick="openHtmlReport()" style="padding:6px 10px;font-size:11px">📄 Relatório</button>
         <button class="btn-ghost" onclick="exportProjectSummary()" style="padding:6px 10px;font-size:11px">📥 JSON</button>
@@ -172,10 +182,30 @@
             </div>
           </div>
         </div>
-      </div>
-    </div>
-
-    <!-- GEO MAP TAB -->
+        <div class="dashboard-layout" style="margin-top:8px">
+          <div class="dashboard-stack" style="flex:1">
+            <div class="dashboard-card">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <h3 style="margin:0">📈 Evolução (30 dias)</h3>
+                <button class="btn-ghost" style="font-size:10px;padding:3px 10px" onclick="loadDashboardTrends()">Atualizar</button>
+              </div>
+              <div style="display:flex;gap:12px;flex-wrap:wrap">
+                <div style="flex:1;min-width:200px">
+                  <div style="font-size:10px;color:var(--text3);margin-bottom:4px;font-weight:600">Elementos e Clientes</div>
+                  <canvas id="dash-trend-elements" width="300" height="100" style="width:100%;max-width:350px;height:100px;border-radius:6px;background:var(--surface)"></canvas>
+                </div>
+                <div style="flex:1;min-width:200px">
+                  <div style="font-size:10px;color:var(--text3);margin-bottom:4px;font-weight:600">Cabos e Metragem</div>
+                  <canvas id="dash-trend-cables" width="300" height="100" style="width:100%;max-width:350px;height:100px;border-radius:6px;background:var(--surface)"></canvas>
+                </div>
+                <div style="flex:1;min-width:200px">
+                  <div style="font-size:10px;color:var(--text3);margin-bottom:4px;font-weight:600">Incidentes e Rompimentos</div>
+                  <canvas id="dash-trend-incidents" width="300" height="100" style="width:100%;max-width:350px;height:100px;border-radius:6px;background:var(--surface)"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
     <div id="view-geomap" class="view-tab active" style="position:relative">
       <div id="geo-map-container">
         <div id="geo-map"></div>
@@ -187,6 +217,12 @@
           <button class="mode-btn" id="mode-cable" onclick="setMapMode('cable')">🔌 Traçar Cabo</button>
           <div class="sep"></div>
           <button class="mode-btn" id="mode-measure" onclick="setMapMode('measure')">📏 Medir</button>
+          <div class="sep"></div>
+          <button class="mode-btn" id="mode-radius" onclick="setMapMode('radius')">⭕ Pesquisa Rádio</button>
+          <div class="sep"></div>
+          <button class="mode-btn" id="draft-toggle-btn" onclick="toggleDraftMode()" title="Modo Planejamento">📐 Rascunho</button>
+          <div class="sep"></div>
+          <button class="mode-btn" id="mode-fence" onclick="setMapMode('fence')" title="Geocerca">🛡️ Geocerca</button>
           <div class="sep"></div>
           <button class="mode-btn" onclick="geoMap.setView([-16.8225,-49.245],13)">📍 Aparecida GO</button>
           <button class="mode-btn" onclick="fitMapToBounds()">⛶ Ajustar</button>
@@ -212,10 +248,33 @@
           <button id="measure-clear-btn" onclick="clearMeasure()" style="border:none;background:none;color:var(--red);cursor:pointer;font-size:11px;font-weight:700;padding:2px 6px">Limpar</button>
           <button id="measure-finish-btn" onclick="finishMeasure()" style="border:none;background:var(--accent2);color:#fff;cursor:pointer;font-size:11px;font-weight:700;padding:3px 10px;border-radius:5px;margin-left:4px">Concluir</button>
         </div>
+        <div id="radius-display" style="display:none;position:absolute;top:20px;left:50%;transform:translateX(-50%);z-index:402;background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:8px 14px;box-shadow:0 4px 16px rgba(0,0,0,.4);backdrop-filter:blur(8px);font-size:12px;font-weight:700;white-space:nowrap;display:none;align-items:center;gap:8px">
+          <span style="color:var(--accent)">⭕</span>
+          <label style="font-size:11px;color:var(--text2)">Raio:</label>
+          <input id="radius-value" type="range" min="100" max="5000" step="100" value="500" style="width:120px;accent-color:var(--accent)" oninput="updateRadiusSearch()">
+          <span id="radius-label" style="font-size:12px;font-weight:700;color:var(--accent);min-width:55px">500 m</span>
+          <span id="radius-count" style="font-size:11px;color:var(--text3)">0 elementos</span>
+          <button onclick="clearRadiusSearch()" style="border:none;background:none;color:var(--red);cursor:pointer;font-size:11px;font-weight:700;padding:2px 6px">✕</button>
+        </div>
         <!-- MAP LEGEND -->
          <div id="map-legend" style="position:absolute;top:60px;right:12px;z-index:401;background:var(--surface);padding:8px;border-radius:6px;font-size:10px;border:1px solid var(--border);max-height:min(60vh,300px);overflow-y:auto;box-shadow:var(--shadow-soft);backdrop-filter:blur(8px)">
           <div style="font-weight:700;margin-bottom:4px;color:var(--text2)">Legenda</div>
           <div id="map-legend-content"></div>
+          <div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--border)">
+            <label style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text2);cursor:pointer">
+              <input type="checkbox" id="heatmap-toggle" onchange="toggleHeatmap(this.checked)" style="accent-color:var(--accent)"> 🔥 Mapa de Calor
+            </label>
+             <select id="heatmap-source" onchange="updateHeatmap()" style="display:none;margin-top:4px;font-size:9px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text)">
+               <option value="all">Todos</option>
+               <option value="cliente">Clientes</option>
+               <option value="cto">CTOs</option>
+               <option value="onu">ONUs</option>
+               <option value="incidents">Incidentes</option>
+             </select>
+           </div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:10px;padding:4px 0;cursor:pointer">
+            <input type="checkbox" id="draft-visibility-toggle" checked onchange="toggleDraftVisibility(this.checked)" style="accent-color:var(--yellow)"> 📐 Rascunhos
+          </label>
         </div>
       </div>
     </div>
@@ -309,6 +368,13 @@
           </select>
         </div>
         <div class="incident-list" id="incident-list"></div>
+        <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <div style="font-size:14px;font-weight:800">🗓️ Manutenção Agendada</div>
+            <button class="btn-primary" style="font-size:11px;padding:4px 12px" onclick="openMaintenanceModal()">+ Agendar</button>
+          </div>
+          <div id="maintenance-list" style="display:flex;flex-direction:column;gap:6px"></div>
+        </div>
       </div>
     </div>
 
@@ -357,6 +423,11 @@
         <div class="validation-card">
           <div style="font-size:16px;font-weight:800;margin-bottom:10px">Pendências encontradas</div>
           <div class="issue-list" id="validation-issues"></div>
+        </div>
+        <div class="validation-card" id="cto-occupancy-card" style="margin-top:12px">
+          <div style="font-size:16px;font-weight:800;margin-bottom:10px">Ocupação CTO</div>
+          <div id="cto-occupancy-summary" style="margin-bottom:10px"></div>
+          <div id="cto-occupancy-list" style="max-height:300px;overflow-y:auto"></div>
         </div>
       </div>
     </div>
@@ -569,6 +640,9 @@
   <div class="user-dd-item" role="menuitem" onclick="openPasswordModal()">
     🔐 Alterar senha
   </div>
+  <div class="user-dd-item" role="menuitem" onclick="openCompareModal()">
+    📊 Comparar Projetos
+  </div>
   <div class="user-dd-sep"></div>
   <div class="user-dd-item" role="menuitem" onclick="doLogout()" style="color:var(--red)">
     🚪 Sair
@@ -668,6 +742,23 @@
         <div class="form-group"><label class="form-label">Longitude</label><input class="form-input" id="edit-lng" type="number" step="any"></div>
       </div>
       <div class="form-group"><label class="form-label">Detalhes</label><textarea class="form-textarea" id="edit-detalhes"></textarea></div>
+      <div class="form-group" style="margin-top:4px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer">
+          <input type="checkbox" id="edit-draft" style="accent-color:var(--yellow)"> 📐 Rascunho
+        </label>
+      </div>
+      <div id="poste-fields" style="display:none">
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Altura (m)</label><input class="form-input" id="edit-altura" type="number" step="0.1" placeholder="9"></div>
+          <div class="form-group"><label class="form-label">Material</label>
+            <select class="form-select" id="edit-material"><option value="">—</option><option value="concreto">Concreto</option><option value="madeira">Madeira</option><option value="metalico">Metálico</option><option value="fibra">Fibra</option></select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Proprietário</label><input class="form-input" id="edit-proprietario" placeholder="Ex: CEMIG, Copasa..."></div>
+          <div class="form-group"><label class="form-label">Última Inspeção</label><input class="form-input" id="edit-ultima-inspecao" type="date"></div>
+        </div>
+      </div>
       <div class="form-group" style="margin-top:8px">
         <label class="form-label">📷 Fotos</label>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -713,7 +804,7 @@
       <!-- Campos de metragem e estado -->
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label">Metragem (metros)</label>
+          <label class="form-label">Metragem (metros) <span style="color:var(--text3);font-weight:400;font-size:9px">— calculada automaticamente pela rota</span></label>
           <input class="form-input" id="cable-length" type="number" step="0.1" placeholder="Ex: 350.5">
         </div>
         <div class="form-group">
@@ -806,7 +897,7 @@
       <div class="form-group"><label class="form-label">Tipo / Fibra</label><input class="form-input" id="cable-edit-fibra" placeholder="Ex: FO-12"></div>
       <div class="form-group"><label class="form-label">Porta</label><input class="form-input" id="cable-edit-porta" placeholder="Ex: PON 1/0/1"></div>
       <div class="form-group"><label class="form-label">Cor</label><div class="fiber-colors-grid" id="cable-edit-fiber-grid"></div></div>
-      <div class="form-group"><label class="form-label">Metragem (m)</label><input class="form-input" id="cable-edit-length" type="number" step="0.1" placeholder="Ex: 350.5"></div>
+      <div class="form-group"><label class="form-label">Metragem (m)</label><input class="form-input" id="cable-edit-length" type="number" step="0.1" placeholder="Ex: 350.5"><small id="cable-edit-length-hint" style="display:none;font-size:9px;color:var(--text3);margin-top:2px"></small></div>
       <div class="form-group"><label class="form-label">Observação</label><input class="form-input" id="cable-edit-obs" placeholder="Obs do cabo"></div>
       <div class="form-group"><label class="form-label">Estado</label>
         <select class="form-select" id="cable-edit-broken">
@@ -891,12 +982,71 @@
       <div id="incident-timeline-section" style="display:none;margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
         <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">📋 Timeline do Incidente</div>
         <div id="incident-timeline-list" style="display:flex;flex-direction:column;gap:8px"></div>
+        <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+          <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">💬 Comentários</div>
+          <div id="incident-comments-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
+          <div style="display:flex;gap:6px">
+            <input class="form-input" id="incident-comment-input" placeholder="Adicionar comentário..." style="flex:1;font-size:11px;padding:4px 8px">
+            <button class="btn-primary" style="font-size:10px;padding:4px 10px" onclick="addIncidentComment()">Enviar</button>
+          </div>
+        </div>
       </div>
     </div>
     <div class="modal-footer">
       <button class="btn-danger" id="incident-delete-btn" style="display:none" onclick="deleteIncidentUI()">Excluir</button>
       <button class="btn-ghost" onclick="closeModal('modal-incident')">Cancelar</button>
       <button class="btn-primary" onclick="saveIncident()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MAINTENANCE MODAL -->
+<div class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="maintenance-modal-title" id="modal-maintenance">
+  <div class="modal-box">
+    <div class="modal-head"><h2 id="maintenance-modal-title">🗓️ Agendar Manutenção</h2><button class="modal-close" onclick="closeModal('modal-maintenance')" aria-label="Fechar">×</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="maint-id">
+      <div class="form-group"><label class="form-label">Título</label><input class="form-input" id="maint-title"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Tipo</label>
+          <select class="form-select" id="maint-type"><option value="preventiva">Preventiva</option><option value="corretiva">Corretiva</option><option value="emergencia">Emergência</option><option value="expansao">Expansão</option></select>
+        </div>
+        <div class="form-group"><label class="form-label">Prioridade</label>
+          <select class="form-select" id="maint-priority"><option value="normal">Normal</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Data Agendada</label><input class="form-input" id="maint-date" type="date"></div>
+        <div class="form-group"><label class="form-label">Atribuído a</label><input class="form-input" id="maint-assigned" placeholder="Técnico..."></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Elemento (opcional)</label>
+          <select class="form-select" id="maint-element"><option value="">Nenhum</option></select>
+        </div>
+        <div class="form-group"><label class="form-label">Status</label>
+          <select class="form-select" id="maint-status"><option value="agendada">Agendada</option><option value="em_andamento">Em andamento</option><option value="concluida">Concluída</option><option value="cancelada">Cancelada</option></select>
+        </div>
+      </div>
+      <div class="form-group"><label class="form-label">Descrição</label><textarea class="form-textarea" id="maint-description" rows="3"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-maintenance')">Cancelar</button>
+      <button class="btn-primary" onclick="saveMaintenance()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- COMPARE PROJECTS MODAL -->
+<div class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="compare-modal-title" id="modal-compare">
+  <div class="modal-box" style="width:700px">
+    <div class="modal-head"><h2 id="compare-modal-title">📊 Comparar Projetos</h2><button class="modal-close" onclick="closeModal('modal-compare')" aria-label="Fechar">×</button></div>
+    <div class="modal-body">
+      <div style="display:flex;gap:10px;margin-bottom:12px">
+        <div style="flex:1"><label class="form-label">Projeto A</label><select class="form-select" id="compare-a"></select></div>
+        <div style="flex:1"><label class="form-label">Projeto B</label><select class="form-select" id="compare-b"></select></div>
+        <button class="btn-primary" style="align-self:flex-end" onclick="runCompare()">Comparar</button>
+      </div>
+      <div id="compare-results"></div>
     </div>
   </div>
 </div>
@@ -946,7 +1096,21 @@
         </div>
       </div>
       <!-- Users list -->
-      <div id="users-list" style="max-height:420px;overflow-y:auto"></div>
+      <div id="users-list" style="max-height:300px;overflow-y:auto"></div>
+      <!-- API Keys section -->
+      <div style="padding:12px 20px;border-top:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px">🔑 Chaves API</div>
+          <div style="display:flex;gap:6px;align-items:end">
+            <input class="form-input" id="new-apikey-name" placeholder="Nome da chave" style="font-size:11px;width:160px;padding:3px 8px">
+            <select class="form-select" id="new-apikey-role" style="font-size:11px;padding:3px 6px;width:100px">
+              <option value="viewer">Viewer</option><option value="editor">Editor</option><option value="admin">Admin</option>
+            </select>
+            <button class="btn-primary" style="font-size:10px;padding:3px 10px" onclick="createApiKeyUI()">+ Criar</button>
+          </div>
+        </div>
+        <div id="apikeys-list" style="max-height:160px;overflow-y:auto"></div>
+      </div>
     </div>
   </div>
 </div>

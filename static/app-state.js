@@ -162,6 +162,7 @@ let showOnlyUnpositioned = false;
 let selectedFiberColor = 'Azul';
 let selectedPortFiberColor = 'Azul';
 let currentPropsId = null;
+let draftMode = false;
 let dashboardSummary = null;
 let projectAudit = [];
 let topologyHealth = null;

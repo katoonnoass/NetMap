@@ -1,9 +1,17 @@
 {
-  "name": "ISP NetMap Pro",
+  "background_color": "#080c14",
+  "description": "ISP Geospatial Network Inventory",
+  "display": "standalone",
+  "icons": [
+    {
+      "sizes": "48x48",
+      "src": "/static/favicon.ico",
+      "type": "image/x-icon"
+    }
+  ],
+  "name": "NetMap Pro",
+  "orientation": "any",
   "short_name": "NetMap",
   "start_url": "/",
-  "display": "standalone",
-  "background_color": "#f4f8fc",
-  "theme_color": "#1ea7d7",
-  "icons": [{"src": "/static/favicon.svg", "sizes": "any", "type": "image/svg+xml"}]
+  "theme_color": "#1A73E8"
 }

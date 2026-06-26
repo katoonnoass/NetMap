@@ -88,13 +88,14 @@ async function saveElement(){
   }
   
  const created = await api('POST', papi('/elements'), {
-  nome, tipo: selectedAddType, status: document.getElementById('add-status').value,
-  modelo: document.getElementById('add-modelo').value.trim(),
-  endereco: document.getElementById('add-endereco').value.trim(),
-  detalhes: document.getElementById('add-detalhes').value.trim(),
-  lat, lng,
-  capacity: capacity   // <--- adicione esta linha
-});
+   nome, tipo: selectedAddType, status: document.getElementById('add-status').value,
+   modelo: document.getElementById('add-modelo').value.trim(),
+   endereco: document.getElementById('add-endereco').value.trim(),
+   detalhes: document.getElementById('add-detalhes').value.trim(),
+   lat, lng,
+   capacity: capacity,
+   draft: draftMode || undefined,
+ });
   
   if(!created||!created.id) return;
   DB.elements.push(created);
@@ -124,6 +125,13 @@ function openEditModal(id){
   document.getElementById('edit-modelo').value=el.modelo||'';
   document.getElementById('edit-lat').value=el.lat||'';
   document.getElementById('edit-lng').value=el.lng||'';
+  document.getElementById('edit-draft').checked=!!el.draft;
+  const posteFields=document.getElementById('poste-fields');
+  if(posteFields) posteFields.style.display=el.tipo==='poste'?'block':'none';
+  document.getElementById('edit-altura').value=el.altura||'';
+  document.getElementById('edit-material').value=el.material||'';
+  document.getElementById('edit-proprietario').value=el.proprietario||'';
+  document.getElementById('edit-ultima-inspecao').value=el.ultima_inspecao||'';
   document.getElementById('edit-delete-btn').onclick=()=>deleteElement(id);
   loadElementPhotos(id);
   openModal('modal-edit');
@@ -141,6 +149,11 @@ async function updateElement(){
     endereco:document.getElementById('edit-endereco').value.trim(),
     detalhes:document.getElementById('edit-detalhes').value.trim(),
     lat, lng,
+    draft: document.getElementById('edit-draft').checked || false,
+    altura: parseFloat(document.getElementById('edit-altura').value) || null,
+    material: document.getElementById('edit-material').value || null,
+    proprietario: document.getElementById('edit-proprietario').value.trim() || null,
+    ultima_inspecao: document.getElementById('edit-ultima-inspecao').value || null,
   };
   await api('PUT',papi(`/elements/${id}`),updated);
   const idx=DB.elements.findIndex(e=>e.id===id);

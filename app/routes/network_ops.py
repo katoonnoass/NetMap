@@ -4,7 +4,7 @@ Rotas tecnicas para operacao e saude da topologia.
 
 from flask import Blueprint, jsonify
 
-from ..services import network_service, project_service
+from ..services import network_service, optical_service, project_service
 from ..utils.auth import require_login
 
 network_ops_bp = Blueprint("network_ops", __name__)
@@ -39,4 +39,17 @@ def get_path_trace(pid, start_id):
     payload = network_service.build_path_trace(db, pid, start_id)
     if payload is None:
         return jsonify({"error": "Not found"}), 404
+    return jsonify(payload)
+
+
+@network_ops_bp.route("/api/projects/<pid>/signal/<int:element_id>")
+@require_login
+def get_signal_level(pid, element_id):
+    db = project_service.load_project(pid)
+    if not db:
+        return jsonify({"error": "Not found"}), 404
+    el = next((e for e in db.get("elements", []) if e.get("id") == element_id), None)
+    if not el:
+        return jsonify({"error": "Elemento nao encontrado"}), 404
+    payload = optical_service.estimate_signal_level(db, pid, element_id)
     return jsonify(payload)

@@ -74,6 +74,9 @@ def create_app(config_class=Config):
         if request.method in ("GET", "HEAD", "OPTIONS", "TRACE"):
             return
         if request.path.startswith("/api/"):
+            auth = request.headers.get("Authorization", "")
+            if auth.startswith("Bearer "):
+                return
             csrf.protect()
 
     @app.context_processor
@@ -97,6 +100,11 @@ def create_app(config_class=Config):
     from .routes.integrations import integrations_bp
     from .routes.address_cache import cache_bp
     from .routes.photos import photos_bp
+    from .routes.backup import backup_bp
+    from .routes.fences import fence_bp
+    from .routes.maintenance import maintenance_bp
+    from .routes.apikeys import apikey_bp
+    from .routes.sse import sse_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(users_bp)
@@ -113,6 +121,11 @@ def create_app(config_class=Config):
     app.register_blueprint(integrations_bp)
     app.register_blueprint(cache_bp)
     app.register_blueprint(photos_bp)
+    app.register_blueprint(backup_bp)
+    app.register_blueprint(fence_bp)
+    app.register_blueprint(maintenance_bp)
+    app.register_blueprint(apikey_bp)
+    app.register_blueprint(sse_bp)
 
     @app.after_request
     def response_policy(response):

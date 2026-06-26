@@ -6,7 +6,7 @@ Recebe o project dict ja carregado — nao faz load/save.
 from . import project_service
 
 ALLOWED_CONNECTION_FIELDS = {
-    "from", "to", "porta", "fibra", "cor", "broken", "length", "waypoints",
+    "from", "to", "porta", "fibra", "cor", "broken", "length", "waypoints", "draft",
 }
 
 

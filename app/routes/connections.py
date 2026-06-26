@@ -7,6 +7,7 @@ from flask import Blueprint, jsonify, request, session
 from .. import limiter
 from ..services import audit_service, connection_service, project_service
 from ..utils.auth import require_login, require_perm
+from ..utils.notify import notify_change
 from ..utils.query import (
     parse_pagination,
     parse_sorting,
@@ -80,6 +81,7 @@ def add_connection(pid):
         message=f"Conexao #{connection['id']} criada",
         extra={"from": connection.get("from"), "to": connection.get("to")},
     )
+    notify_change("connection_created", pid, connection_id=connection["id"])
     return jsonify(connection), 201
 
 
@@ -110,6 +112,7 @@ def update_connection(pid, cid):
         message=f"Conexao #{cid} atualizada",
         extra={"broken": connection.get("broken", False)},
     )
+    notify_change("connection_updated", pid, connection_id=cid)
     return jsonify(connection)
 
 
@@ -134,4 +137,5 @@ def delete_connection(pid, cid):
         entity_id=cid,
         message=f"Conexao #{cid} removida",
     )
+    notify_change("connection_deleted", pid, connection_id=cid)
     return jsonify({"ok": True})

@@ -118,14 +118,24 @@ function createMarkerIcon(el, selected=false){
   const iconSvg=(ICONS[el.tipo]||'').replace('width="16"','width="14"').replace('height="16"','height="14"');
   const selShadow=selected?'box-shadow:0 0 0 3px var(--accent-glow),0 4px 12px rgba(0,0,0,.3);':'box-shadow:0 2px 6px rgba(0,0,0,.2);';
   const selBorder=selected?'3px':'2px';
+  const draftStyle=el.draft?'opacity:0.5;border-style:dashed;':'';
+  const draftBadge=el.draft?'<span style="position:absolute;top:-6px;right:-6px;background:var(--yellow);color:#000;font-size:7px;font-weight:800;padding:1px 3px;border-radius:3px;line-height:1">R</span>':'';
   const label=selected?`<div style="position:absolute;top:32px;left:50%;transform:translateX(-50%);background:rgba(8,12,20,.85);color:#e8edf5;font-size:9px;font-weight:600;padding:2px 7px;border-radius:4px;white-space:nowrap;pointer-events:none;border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(4px)">${esc(el.nome)}</div>`:'';
-  const html=`<div style="width:28px;height:28px;border-radius:6px;background:${statusColor};border:${selBorder} solid ${selected?'rgba(255,255,255,.9)':statusColor};display:flex;align-items:center;justify-content:center;cursor:pointer;${selShadow}transition:all .15s;color:#fff;position:relative">
-    ${iconSvg}
+  const html=`<div style="width:28px;height:28px;border-radius:6px;background:${statusColor};border:${selBorder} ${el.draft?'dashed':'solid'} ${selected?'rgba(255,255,255,.9)':statusColor};display:flex;align-items:center;justify-content:center;cursor:pointer;${selShadow}${draftStyle}transition:all .15s;color:#fff;position:relative">
+    ${iconSvg}${draftBadge}
   </div>${label}`;
   return L.divIcon({html,className:'map-node-marker',iconSize:[selected?40:28,selected?48:32],iconAnchor:[selected?20:14,selected?24:16]});
 }
 
 function addOrUpdateMarker(el) {
+  if(!_draftVisible && el.draft){
+    if(mapMarkers[el.id]){
+      if(markerClusterGroup) markerClusterGroup.removeLayer(mapMarkers[el.id]);
+      else geoMap.removeLayer(mapMarkers[el.id]);
+      delete mapMarkers[el.id];
+    }
+    return;
+  }
   const pos = el.lat && el.lng ? [el.lat, el.lng] : null;
   if (!pos) {
     if (mapMarkers[el.id]) {
@@ -201,8 +211,9 @@ function drawCableOnMap(conn){
   const isBroken = conn.broken === true;
   const baseColor = FIBER_COLORS[conn.cor] || '#2196f3';
   const color = isBroken ? '#ff3d57' : baseColor;
-  const dashArray = isBroken ? '8,6' : (conn.fibra?.includes('Drop') ? '6,4' : null);
+  const dashArray = isBroken ? '8,6' : (conn.draft ? '4,4' : (conn.fibra?.includes('Drop') ? '6,4' : null));
   const weight = isBroken ? 3 : (conn.fibra?.includes('36FO') ? 5 : (conn.fibra?.includes('12FO') ? 3.5 : 2.5));
+  const opacity = conn.draft ? 0.45 : 0.85;
   
   const poly = L.polyline(pts, {
     color: color,
@@ -216,6 +227,7 @@ function drawCableOnMap(conn){
   let tooltipText = `<b>${esc(fromEl.nome)}</b> → <b>${esc(toEl.nome)}</b><br><span style="color:${color}">■</span> ${esc(conn.fibra||'Cabo')} (${esc(conn.cor||'—')})`;
   if (conn.length) tooltipText += `<br>📏 ${conn.length}m`;
   if (isBroken) tooltipText += `<br><span style="color:var(--red)">💔 ROMPIDO</span>`;
+  if (conn.draft) tooltipText += `<br><span style="color:var(--yellow)">📐 RASCUNHO</span>`;
   poly.bindTooltip(tooltipText, {sticky:true, className:'leaflet-tooltip-cable'});
 
   poly.on('click', e=>{L.DomEvent.stopPropagation(e); showCablePanel(conn.id);});
@@ -238,7 +250,7 @@ function removeCableFromMap(id){
 function refreshAllCables(){
   cableLayers.forEach(c=>geoMap.removeLayer(c.layer));
   cableLayers=[];
-  DB.connections.forEach(c=>drawCableOnMap(c));
+  DB.connections.filter(c=>_draftVisible||!c.draft).forEach(c=>drawCableOnMap(c));
 }
 
 // ═══════════════════════════════════════════════════════
@@ -249,6 +261,12 @@ function setMapMode(mode){
   if(mapMode==='measure' && mode!=='measure'){
     clearMeasure();
   }
+  if(mapMode==='radius' && mode!=='radius'){
+    clearRadiusSearch();
+  }
+  if(mapMode==='fence' && mode!=='fence'){
+    cancelFenceMode();
+  }
   mapMode=mode;
   document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active','cable-active'));
   const btn=document.getElementById('mode-'+mode);
@@ -256,6 +274,14 @@ function setMapMode(mode){
   document.getElementById('btn-cable').classList.toggle('btn-warn',mode==='cable');
   if(mode==='measure'){
     geoMap.getContainer().style.cursor='crosshair';
+  } else if(mode==='radius'){
+    geoMap.getContainer().style.cursor='crosshair';
+    document.getElementById('radius-display').style.display='flex';
+    _radiusState={circle:null,center:null,latlng:null};
+  } else if(mode==='fence'){
+    geoMap.getContainer().style.cursor='crosshair';
+    _fenceState={points:[], layer:null, markers:[]};
+    toast('Clique no mapa para definir os vértices da geocerca. Duplo-clique para finalizar.','warn');
   } else {
     geoMap.getContainer().style.cursor=mode==='place'?'crosshair':mode==='cable'?'cell':'grab';
   }
@@ -280,8 +306,11 @@ function setMapMode(mode){
     hint.style.display='none';
     if(floatBar) floatBar.style.display='none';
     if(measureDisp) measureDisp.style.display='none';
+    const radiusDisp=document.getElementById('radius-display');
+    if(radiusDisp&&mode!=='radius') radiusDisp.style.display='none';
     if(mode!=='cable'&&cableState) clearCablePreview();
     cableState=null;
+    if(mode!=='fence') cancelFenceMode();
   }
 }
 
@@ -442,15 +471,21 @@ function handleMapClick(e){
     handleMeasureClick(e);
     return;
   }
+  if(mapMode==='radius'){
+    handleRadiusClick(e);
+    return;
+  }
   if(mapMode==='cable'){
     if(!cableState){
-      // Need to click on a marker — handled by marker click
       return;
     }
-    // Add waypoint
     const wp={lat:e.latlng.lat,lng:e.latlng.lng};
     cableState.waypoints.push(wp);
     updateCablePreview();
+    return;
+  }
+  if(mapMode==='fence'){
+    handleFenceClick(e);
     return;
   }
   // Select mode — deselect only
@@ -610,10 +645,232 @@ function finishMeasure(){
   toast('📏 Medição concluída! Distância total: '+document.getElementById('measure-distance').textContent,'success');
 }
 
+let _radiusState = {circle:null, center:null, latlng:null};
+
+function handleRadiusClick(e){
+  if(!_radiusState.latlng){
+    _radiusState.latlng=e.latlng;
+    _radiusState.center=L.circleMarker(e.latlng,{radius:5,color:'var(--accent)',fillColor:'var(--accent)',fillOpacity:1,weight:2}).addTo(geoMap);
+    const radius=parseInt(document.getElementById('radius-value').value)||500;
+    _radiusState.circle=L.circle(e.latlng,{radius:radius,color:'#1A73E8',fillColor:'#1A73E8',fillOpacity:0.08,weight:2,dashArray:'6,4'}).addTo(geoMap);
+    updateRadiusSearch();
+    geoMap.getContainer().style.cursor='default';
+  }else{
+    const r=parseInt(document.getElementById('radius-value').value)||500;
+    _radiusState.circle.setLatLng(e.latlng);
+    _radiusState.center.setLatLng(e.latlng);
+    _radiusState.latlng=e.latlng;
+    updateRadiusSearch();
+  }
+}
+
+function updateRadiusSearch(){
+  if(!_radiusState.circle||!_radiusState.latlng) return;
+  const radius=parseInt(document.getElementById('radius-value').value)||500;
+  _radiusState.circle.setRadius(radius);
+  document.getElementById('radius-label').textContent=radius>=1000?(radius/1000).toFixed(1)+' km':radius+' m';
+  const clat=_radiusState.latlng.lat, clng=_radiusState.latlng.lng;
+  let count=0;
+  DB.elements.forEach(el=>{
+    if(!el.lat||!el.lng) return;
+    const d=haversineDistance(clat,clng,el.lat,el.lng);
+    const marker=mapMarkers[el.id];
+    if(d<=radius){
+      count++;
+      if(marker) marker.setOpacity(1);
+    }else{
+      if(marker) marker.setOpacity(0.15);
+    }
+  });
+  document.getElementById('radius-count').textContent=count+' elemento'+(count!==1?'s':'');
+}
+
+function clearRadiusSearch(){
+  if(_radiusState.circle){geoMap.removeLayer(_radiusState.circle);_radiusState.circle=null;}
+  if(_radiusState.center){geoMap.removeLayer(_radiusState.center);_radiusState.center=null;}
+  _radiusState.latlng=null;
+  document.getElementById('radius-display').style.display='none';
+  Object.values(mapMarkers).forEach(m=>{try{m.setOpacity(1);}catch(e){}});
+  setMapMode('select');
+}
+
+let _fenceState={points:[], layer:null, markers:[], preview:null};
+let _fenceLayers=[];
+
+function handleFenceClick(e){
+  if(!_fenceState) _fenceState={points:[], layer:null, markers:[]};
+  const latlng=e.latlng;
+  _fenceState.points.push({lat:latlng.lat,lng:latlng.lng});
+  const marker=L.circleMarker(latlng,{radius:5,color:'#FF9800',fillColor:'#FF9800',fillOpacity:0.8,weight:2});
+  marker.addTo(geoMap);
+  _fenceState.markers.push(marker);
+  if(_fenceState.preview){geoMap.removeLayer(_fenceState.preview);_fenceState.preview=null;}
+  if(_fenceState.points.length>=2){
+    const pts=_fenceState.points.map(p=>[p.lat,p.lng]);
+    if(_fenceState.points.length>=3){
+      _fenceState.preview=L.polygon(pts,{color:'#FF9800',fillColor:'#FF9800',fillOpacity:0.1,weight:2,dashArray:'6,4'}).addTo(geoMap);
+    } else {
+      _fenceState.preview=L.polyline(pts,{color:'#FF9800',weight:2,dashArray:'6,4'}).addTo(geoMap);
+    }
+  }
+  if(_fenceState.points.length>=3){
+    toast(`${_fenceState.points.length} pontos — duplo-clique para finalizar`,'warn');
+  }
+}
+
+async function finishFenceMode(){
+  if(!_fenceState||_fenceState.points.length<3){toast('Mínimo 3 pontos para fechar a geocerca','error');return;}
+  const nome=prompt('Nome da geocerca:','Geocerca '+(DB.geofences?.length||0)+1);
+  if(!nome&&nome!==''){cancelFenceMode();return;}
+  const colors=['#1A73E8','#34A853','#EA4335','#FF9800','#8b5cf6','#00BCD4'];
+  const color=colors[(DB.geofences?.length||0)%colors.length];
+  const fence=await api('POST',papi('/fences'),{nome:nome||'Geocerca',color,coordinates:_fenceState.points});
+  if(!fence){cancelFenceMode();return;}
+  if(!DB.geofences) DB.geofences=[];
+  DB.geofences.push(fence);
+  drawFenceOnMap(fence);
+  cancelFenceMode();
+  setMapMode('select');
+  toast('🛡️ Geocerca criada!','success');
+}
+
+function cancelFenceMode(){
+  if(!_fenceState) return;
+  _fenceState.markers.forEach(m=>{try{geoMap.removeLayer(m);}catch(e){}});
+  if(_fenceState.preview){try{geoMap.removeLayer(_fenceState.preview);}catch(e){}}
+  _fenceState={points:[], layer:null, markers:[], preview:null};
+  geoMap.getContainer().style.cursor='grab';
+}
+
+function drawFenceOnMap(fence){
+  removeFenceFromMap(fence.id);
+  const coords=fence.coordinates||[];
+  if(coords.length<3) return;
+  const polygon=L.polygon(coords.map(c=>[c.lat,c.lng]),{
+    color:fence.color||'#1A73E8',
+    fillColor:fence.color||'#1A73E8',
+    fillOpacity:0.08,
+    weight:2,
+    dashArray:'6,4',
+  }).addTo(geoMap);
+  let tooltip=`<b>${esc(fence.nome||'Geocerca')}</b>`;
+  if(fence.type) tooltip+=`<br>Tipo: ${esc(fence.type)}`;
+  polygon.bindTooltip(tooltip,{sticky:true,className:'leaflet-tooltip-cable'});
+  polygon.on('click',e=>{L.DomEvent.stopPropagation(e);showFencePanel(fence.id);});
+  _fenceLayers.push({id:fence.id,layer:polygon});
+}
+
+function removeFenceFromMap(id){
+  const idx=_fenceLayers.findIndex(f=>f.id===id);
+  if(idx>=0){geoMap.removeLayer(_fenceLayers[idx].layer);_fenceLayers.splice(idx,1);}
+}
+
+function refreshAllFences(){
+  _fenceLayers.forEach(f=>geoMap.removeLayer(f.layer));
+  _fenceLayers=[];
+  (DB.geofences||[]).forEach(f=>drawFenceOnMap(f));
+}
+
+function showFencePanel(id){
+  const fence=(DB.geofences||[]).find(f=>f.id===id);
+  if(!fence) return;
+  document.getElementById('right-panel').classList.remove('hidden');
+  scheduleMapRender();
+  document.getElementById('panel-title').innerHTML=`🛡️ ${esc(fence.nome||'Geocerca')}`;
+  document.getElementById('panel-body').innerHTML=`
+    <div class="detail-section">
+      <div class="detail-label">Geocerca</div>
+      <div class="detail-row"><span class="detail-key">Nome</span><span class="detail-val">${esc(fence.nome)}</span></div>
+      <div class="detail-row"><span class="detail-key">Cor</span><span class="detail-val"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${fence.color||'#1A73E8'};vertical-align:middle"></span></span></div>
+      <div class="detail-row"><span class="detail-key">Vértices</span><span class="detail-val">${(fence.coordinates||[]).length} pontos</span></div>
+      <div class="detail-row"><span class="detail-key">Tipo</span><span class="detail-val">${esc(fence.type||'aviso')}</span></div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-label" onclick="loadFenceElements(${fence.id})" style="cursor:pointer" title="Clique para carregar">Elementos dentro</div>
+      <div id="fence-elements-list" style="font-size:10px;color:var(--text3)">Clique para carregar</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <button class="btn-ghost" style="justify-content:center;color:var(--yellow);border-color:var(--yellow)" onclick="zoomToFence(${fence.id})">🔍 Zoom</button>
+      <button class="btn-danger" style="justify-content:center" onclick="deleteFence(${fence.id})">🗑️ Remover</button>
+    </div>`;
+}
+
+async function loadFenceElements(fenceId){
+  const data=await api('GET',papi(`/fences/${fenceId}/elements`));
+  const el=document.getElementById('fence-elements-list');
+  if(!el) return;
+  if(!data||!data.items||!data.items.length){el.innerHTML='<span style="font-size:10px;color:var(--text3)">Nenhum elemento dentro da geocerca</span>';return;}
+  el.innerHTML=data.items.map(e=>`<div style="padding:2px 0"><span style="color:${TYPE_CONFIG[e.tipo]?.color||'#888'}">${ICONS[e.tipo]||''}</span> <a href="#" onclick="locateElement(${e.id});return false" style="color:var(--accent);font-weight:600">${esc(e.nome)}</a> <span style="color:var(--text3)">${esc(e.tipo)}</span></div>`).join('');
+}
+
+function zoomToFence(id){
+  const fence=(DB.geofences||[]).find(f=>f.id===id);
+  if(!fence||!fence.coordinates||fence.coordinates.length<3) return;
+  const polygon=L.polygon(fence.coordinates.map(c=>[c.lat,c.lng]));
+  geoMap.fitBounds(polygon.getBounds().pad(0.2));
+}
+
+async function deleteFence(id){
+  if(!confirm('Remover esta geocerca?')) return;
+  await api('DELETE',papi(`/fences/${id}`));
+  DB.geofences=(DB.geofences||[]).filter(f=>f.id!==id);
+  removeFenceFromMap(id);
+  closePanel();
+  toast('🛡️ Geocerca removida','success');
+}
+
+function loadFencesFromDB(){
+  if(!DB.geofences) DB.geofences=[];
+  DB.geofences.forEach(f=>drawFenceOnMap(f));
+}
+
+let _heatLayer=null;
+
+function toggleHeatmap(enabled){
+  const sel=document.getElementById('heatmap-source');
+  if(sel) sel.style.display=enabled?'block':'none';
+  if(enabled){
+    updateHeatmap();
+  }else{
+    removeHeatmap();
+  }
+}
+
+function updateHeatmap(){
+  if(!document.getElementById('heatmap-toggle')?.checked){removeHeatmap();return;}
+  if(typeof L.heatLayer!=='function'){toast('leaflet-heat nao carregado','error');return;}
+  removeHeatmap();
+  const source=document.getElementById('heatmap-source')?.value||'all';
+  let points=[];
+  if(source==='incidents'){
+    DB.incidents.forEach(inc=>{
+      const el=DB.elements.find(e=>e.id===inc.element_id);
+      if(el?.lat&&el?.lng) points.push([el.lat,el.lng,0.8]);
+    });
+  }else{
+    const targetType=source==='all'?null:source;
+    DB.elements.forEach(el=>{
+      if(!el.lat||!el.lng) return;
+      if(targetType&&el.tipo!==targetType) return;
+      points.push([el.lat,el.lng,0.6]);
+    });
+  }
+  if(!points.length){toast('Sem pontos para mapa de calor','warn');return;}
+  _heatLayer=L.heatLayer(points,{radius:25,blur:15,maxZoom:17,gradient:{0.2:'#00c8ff',0.4:'#00e676',0.6:'#ffe066',0.8:'#ff9100',1.0:'#ff3d57'}}).addTo(geoMap);
+}
+
+function removeHeatmap(){
+  if(_heatLayer){geoMap.removeLayer(_heatLayer);_heatLayer=null;}
+}
+
 function handleMeasureDblClick(e){
   if(mapMode==='measure'&&!measureState.finished){
     L.DomEvent.stopPropagation(e);
     finishMeasure();
+  }
+  if(mapMode==='fence'&&_fenceState&&_fenceState.points.length>=3){
+    L.DomEvent.stopPropagation(e);
+    finishFenceMode();
   }
 }
 
@@ -841,6 +1098,72 @@ function highlightMarkerTemporarily(id){
   setTimeout(()=>{
     if(mapMarkers[id]) marker.setIcon(originalIcon);
   },3000);
+}
+
+function locateElement(id){
+  const el=DB.elements.find(e=>e.id===id);
+  if(!el||!el.lat||!el.lng){toast('Elemento sem coordenadas','error');return;}
+  switchTab('geomap');
+  geoMap.setView([el.lat,el.lng],17);
+  selectedNodeId=id;
+  refreshAllMarkers();
+  highlightMarkerTemporarily(id);
+  showPanel(id);
+}
+
+function toggleDraftMode(){
+  draftMode=!draftMode;
+  const btn=document.getElementById('draft-toggle-btn');
+  if(btn){
+    btn.classList.toggle('cable-active',draftMode);
+    btn.style.border=draftMode?'2px solid var(--yellow)':'';
+    btn.style.color=draftMode?'var(--yellow)':'';
+  }
+  toast(draftMode?'📐 Modo Rascunho ativo — novos elementos/cabos serão marcados como rascunho':'📐 Modo Rascunho desativado',draftMode?'warn':'success');
+  refreshAllMarkers();
+  refreshAllCables();
+}
+
+async function promoteToReal(id, type){
+
+async function registerInspection(id){
+  const el=DB.elements.find(e=>e.id===id);
+  if(!el) return;
+  const today=new Date().toISOString().slice(0,10);
+  const saved=await api('PUT',papi(`/elements/${id}`),{ultima_inspecao:today});
+  if(!saved) return;
+  el.ultima_inspecao=today;
+  addOrUpdateMarker(el);
+  showPanel(id);
+  toast('🔍 Inspeção registrada para '+today,'success');
+}
+  if(type==='element'){
+    const el=DB.elements.find(e=>e.id===id);
+    if(!el||!el.draft) return;
+    const saved=await api('PUT',papi(`/elements/${id}`),{draft:false});
+    if(!saved) return;
+    el.draft=false;
+    addOrUpdateMarker(el);
+    showPanel(id);
+    toast('✅ Elemento promovido para real!','success');
+  } else if(type==='cable'){
+    const conn=DB.connections.find(c=>c.id===id);
+    if(!conn||!conn.draft) return;
+    const saved=await api('PUT',papi(`/connections/${id}`),{draft:false});
+    if(!saved) return;
+    conn.draft=false;
+    drawCableOnMap(conn);
+    showCablePanel(id);
+    toast('✅ Cabo promovido para real!','success');
+  }
+}
+
+let _draftVisible=true;
+function toggleDraftVisibility(show){
+  _draftVisible=show;
+  refreshAllMarkers();
+  refreshAllCables();
+}
 }
 
 let traceHighlightLayer = null;
@@ -1674,15 +1997,16 @@ async function awaitFinishRedraw(){
 async function saveCable(){
   if(!cableState||!cableState.fromId||!cableState.toId){toast('⚠️ Rota incompleta','error');return;}
   const conn={
-  from:cableState.fromId, to:cableState.toId,
-  waypoints:cableState.waypoints,
-  porta: cableState.presetPorta || document.getElementById('cable-porta').value.trim() || '—',
-  fibra: cableState.presetTipo || document.getElementById('cable-tipo').value,
-  cor: cableState.presetCor || selectedFiberColor,
-  obs: cableState.presetObs || document.getElementById('cable-obs').value.trim(),
-  length: parseFloat(document.getElementById('cable-length').value) || null,
-  broken: document.getElementById('cable-broken').value === 'true',
-};
+   from:cableState.fromId, to:cableState.toId,
+   waypoints:cableState.waypoints,
+   porta: cableState.presetPorta || document.getElementById('cable-porta').value.trim() || '—',
+   fibra: cableState.presetTipo || document.getElementById('cable-tipo').value,
+   cor: cableState.presetCor || selectedFiberColor,
+   obs: cableState.presetObs || document.getElementById('cable-obs').value.trim(),
+   length: parseFloat(document.getElementById('cable-length').value) || null,
+   broken: document.getElementById('cable-broken').value === 'true',
+   draft: draftMode || undefined,
+ };
   const saved=await api('POST',papi('/connections'),conn);
   if(!saved) return;
   DB.connections.push(saved);
@@ -1734,6 +2058,12 @@ function showPanel(id){
       ${el.endereco?`<div class="detail-row"><span class="detail-key">Endereço</span><span class="detail-val" style="font-size:10px;font-family:sans-serif">${esc(el.endereco)}</span></div>`:''}
       ${hasCords?`<div class="detail-row"><span class="detail-key">Coords</span><span class="detail-val">${el.lat?.toFixed(5)}, ${el.lng?.toFixed(5)}</span></div>`:''}
       ${el.detalhes?`<div class="detail-row"><span class="detail-key">Detalhes</span><span class="detail-val" style="font-size:10px;font-family:sans-serif">${esc(el.detalhes)}</span></div>`:''}
+      ${el.tipo==='poste'?`
+        ${el.altura?`<div class="detail-row"><span class="detail-key">Altura</span><span class="detail-val">${esc(el.altura)} m</span></div>`:''}
+        ${el.material?`<div class="detail-row"><span class="detail-key">Material</span><span class="detail-val">${esc(el.material)}</span></div>`:''}
+        ${el.proprietario?`<div class="detail-row"><span class="detail-key">Proprietário</span><span class="detail-val">${esc(el.proprietario)}</span></div>`:''}
+        ${el.ultima_inspecao?`<div class="detail-row"><span class="detail-key">Última Inspeção</span><span class="detail-val">${esc(el.ultima_inspecao)}</span></div>`:''}
+      `:''}
       <div class="detail-row"><span class="detail-key">ID</span><span class="detail-val">#${el.id}</span></div>
     </div>
     <div class="detail-section">
@@ -1763,7 +2093,14 @@ function showPanel(id){
       ${hasCords?`<button class="btn-warn" style="justify-content:center" onclick="startRepositionMode(${el.id})" aria-label="Reposicionar">↕ Reposicionar</button>`:''}
       ${(el.tipo==='ceo'||el.tipo==='cto')?`<button class="btn-ghost" style="justify-content:center;color:var(--yellow);border-color:var(--yellow)" onclick="openFusionMap(${el.id})" aria-label="Mapa de fusão">🔀 Mapa de Fusão</button>`:''}
       ${el.tipo==='cto'?`<button class="btn-ghost" style="justify-content:center;color:var(--green);border-color:var(--green)" onclick="openCtoPorts(${el.id})" aria-label="Portas CTO">📡 Portas CTO</button>`:''}
+      ${el.tipo==='cliente'||el.tipo==='onu'?`<button class="btn-ghost" style="justify-content:center;color:var(--yellow);border-color:var(--yellow)" onclick="openSignalModal(${el.id})" aria-label="Sinal óptico">🔦 Sinal Óptico</button>`:''}
+      ${el.tipo==='poste'?`<button class="btn-ghost" style="justify-content:center;color:var(--blue);border-color:var(--blue)" onclick="registerInspection(${el.id})" aria-label="Inspeção">🔍 Registrar Inspeção</button>`:''}
+      ${el.draft?`<button class="btn-ghost" style="justify-content:center;color:var(--green);border-color:var(--green)" onclick="promoteToReal(${el.id},'element')" aria-label="Promover para real">✅ Promover para Real</button>`:''}
       <button class="btn-ghost" style="justify-content:center" onclick="beginCableFrom(${el.id})" aria-label="Traçar cabo">🔌 Traçar Cabo Aqui</button>
+    </div>
+    <div class="detail-section" id="panel-history-section" style="margin-top:8px">
+      <div class="detail-label" onclick="loadElementHistory(${el.id})" style="cursor:pointer" title="Clique para carregar histórico">📋 Histórico</div>
+      <div id="panel-history-list" style="font-size:10px;color:var(--text3)">Clique para carregar</div>
     </div>`;
   (async()=>{try{const photos=await api('GET',papi('/elements/'+id+'/photos'));const c=document.getElementById('panel-photos-gallery');if(c){if(!photos||!photos.length){c.innerHTML='<span style="font-size:10px;color:var(--text3)">Nenhuma foto</span>';return;}c.innerHTML=photos.filter(p=>p.url&&p.url.startsWith('/')).map(p=>`<a href="${p.url}" target="_blank"><img src="${p.url}" class="photo-thumb" loading="lazy"></a>`).join('');}}catch(e){}})();
 }
@@ -1793,11 +2130,13 @@ function showCablePanel(id){
       <div class="detail-row"><span class="detail-key">Porta</span><span class="detail-val">${esc(conn.porta||'—')}</span></div>
       ${conn.length ? `<div class="detail-row"><span class="detail-key">Metragem</span><span class="detail-val">${conn.length} m</span></div>` : ''}
       <div class="detail-row"><span class="detail-key">Estado</span><span class="detail-val" style="color:${brokenColor}">${brokenText}</span></div>
+      ${conn.draft?`<div class="detail-row"><span class="detail-key">Modo</span><span class="detail-val" style="color:var(--yellow);font-weight:700">📐 RASCUNHO</span></div>`:''}
       ${conn.obs ? `<div class="detail-row"><span class="detail-key">Obs</span><span class="detail-val">${esc(conn.obs)}</span></div>` : ''}
     </div>
     ${canDo('edit_cables') ? `
     <div style="display:flex;flex-direction:column;gap:6px">
       <button class="btn-primary" style="justify-content:center" onclick="openEditCableModal(${id})">✏️ Editar Cabo</button>
+      ${conn.draft?`<button class="btn-ghost" style="justify-content:center;color:var(--green);border-color:var(--green)" onclick="promoteToReal(${id},'cable')">✅ Promover para Real</button>`:''}
       <button class="btn-warn" style="justify-content:center" onclick="toggleCableBroken(${id})">
         ${isBroken ? '🔧 Reparar Cabo' : '⚠️ Marcar como Rompido'}
       </button>
@@ -1813,10 +2152,29 @@ function openEditCableModal(cid){
   document.getElementById('cable-edit-id').value=cid;
   document.getElementById('cable-edit-fibra').value=conn.fibra||'';
   document.getElementById('cable-edit-porta').value=conn.porta||'';
-  document.getElementById('cable-edit-length').value=conn.length||'';
   document.getElementById('cable-edit-obs').value=conn.obs||'';
   document.getElementById('cable-edit-broken').value=String(!!conn.broken);
   selectedCableEditColor=conn.cor||'Azul';
+  let autoLength='';
+  const fromEl=DB.elements.find(e=>e.id===conn.from);
+  const toEl=DB.elements.find(e=>e.id===conn.to);
+  if(fromEl?.lat&&fromEl?.lng&&toEl?.lat&&toEl?.lng){
+    const pts=[{lat:fromEl.lat,lng:fromEl.lng},...(conn.waypoints||[]),{lat:toEl.lat,lng:toEl.lng}];
+    let dist=0;
+    for(let i=0;i<pts.length-1;i++) dist+=haversineDistance(pts[i].lat,pts[i].lng,pts[i+1].lat,pts[i+1].lng);
+    autoLength=Math.round(dist*100)/100;
+  }
+  document.getElementById('cable-edit-length').value=conn.length||autoLength||'';
+  const lengthHint=document.getElementById('cable-edit-length-hint');
+  if(lengthHint){
+    if(autoLength){
+      lengthHint.textContent=conn.length?'':'📏 Distância calculada: '+autoLength+' m';
+      lengthHint.style.display=conn.length?'none':'block';
+    }else{
+      lengthHint.textContent='';
+      lengthHint.style.display='none';
+    }
+  }
   if(typeof buildFiberColorGrid==='function') buildFiberColorGrid('cable-edit-fiber-grid','selectedCableEditColor');
   openModal('modal-cable-edit');
 }
@@ -1843,6 +2201,33 @@ function closePanel(){
   scheduleMapRender();
 }
 
+async function loadElementHistory(eid){
+  const container=document.getElementById('panel-history-list');
+  if(!container) return;
+  container.innerHTML='<span style="font-size:10px;color:var(--text3)">Carregando...</span>';
+  const events=await api('GET',papi('/audit?entity_id='+eid+'&limit=30'));
+  if(!events||!events.length){
+    container.innerHTML='<span style="font-size:10px;color:var(--text3)">Nenhum evento registrado</span>';
+    return;
+  }
+  const ACTION_LABELS={
+    element_created:'✅ Criado',element_updated:'✏️ Editado',element_deleted:'🗑️ Removido',
+    connection_created:'🔌 Cabo criado',connection_updated:'🔌 Cabo editado',connection_deleted:'🔌 Cabo removido',
+    incident_created:'🚨 Incidente criado',incident_updated:'🚨 Incidente editado',incident_deleted:'🚨 Incidente removido',
+    cto_port_updated:'📡 Porta CTO',cto_ports_bulk_updated:'📡 Portas CTO (lote)',cto_splitter_added:'📡 Splitter adicionado',cto_splitter_removed:'📡 Splitter removido',
+    dio_port_updated:'🔧 Porta DIO',
+  };
+  container.innerHTML=events.map(ev=>{
+    const label=ACTION_LABELS[ev.action]||esc(ev.action);
+    return `<div style="padding:3px 0;border-bottom:1px solid var(--border);display:flex;gap:6px;align-items:baseline;flex-wrap:wrap">
+      <span style="color:var(--text3);white-space:nowrap;min-width:90px">${esc(ev.timestamp?.slice(5)||'')}</span>
+      <span style="white-space:nowrap">${label}</span>
+      <span style="color:var(--text3);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(ev.message||'')}">${esc(ev.message||'')}</span>
+      <span style="color:var(--primary);font-size:9px">${esc(ev.username||'')}</span>
+    </div>`;
+  }).join('');
+}
+
 function showElementPopup(id){
   const el=DB.elements.find(e=>e.id===id);if(!el) return;
   const existing=document.getElementById('element-popup-overlay');
@@ -1864,7 +2249,7 @@ function showElementPopup(id){
           <div class="detail-section">
             <div class="detail-label">Informações</div>
             <div class="detail-row"><span class="detail-key">Tipo</span><span class="detail-val">${tc.label||esc(el.tipo)}</span></div>
-            <div class="detail-row"><span class="detail-key">Status</span><span class="detail-val"><span class="badge badge-${el.status}">● ${esc(el.status)}</span></span></div>
+      <div class="detail-row"><span class="detail-key">Status</span><span class="detail-val"><span class="badge badge-${el.status}">● ${esc(el.status)}</span>${el.draft?' <span style="color:var(--yellow);font-size:10px;font-weight:700">📐 RASCUNHO</span>':''}</span></div>
             ${el.modelo?`<div class="detail-row"><span class="detail-key">Modelo</span><span class="detail-val">${esc(el.modelo)}</span></div>`:''}
             ${el.endereco?`<div class="detail-row"><span class="detail-key">Endereço</span><span class="detail-val" style="font-size:10px;font-family:sans-serif">${esc(el.endereco)}</span></div>`:''}
             ${hasCords?`<div class="detail-row"><span class="detail-key">Coords</span><span class="detail-val">${el.lat?.toFixed(5)}, ${el.lng?.toFixed(5)}</span></div>`:''}
@@ -2151,6 +2536,29 @@ registerPublicApi('map', {
   handleMeasureDblClick,
   clearMeasure,
   finishMeasure,
+  loadElementHistory,
+  handleRadiusClick,
+  updateRadiusSearch,
+  clearRadiusSearch,
+  locateElement,
+  toggleHeatmap,
+  updateHeatmap,
+  removeHeatmap,
+  toggleDraftMode,
+  promoteToReal,
+  toggleDraftVisibility,
+  registerInspection,
+  handleFenceClick,
+  finishFenceMode,
+  cancelFenceMode,
+  drawFenceOnMap,
+  removeFenceFromMap,
+  refreshAllFences,
+  showFencePanel,
+  loadFenceElements,
+  zoomToFence,
+  deleteFence,
+  loadFencesFromDB,
 }, [
   'fitMapToBounds',
   'setMapMode',
@@ -2171,6 +2579,21 @@ registerPublicApi('map', {
   'ctxCreateIncident',
   'clearMeasure',
   'finishMeasure',
+  'loadElementHistory',
+  'clearRadiusSearch',
+  'updateRadiusSearch',
+  'locateElement',
+  'toggleHeatmap',
+  'updateHeatmap',
+  'toggleDraftMode',
+  'promoteToReal',
+  'toggleDraftVisibility',
+  'finishFenceMode',
+  'cancelFenceMode',
+  'drawFenceOnMap',
+  'refreshAllFences',
+  'deleteFence',
+  'loadFencesFromDB',
 ]);
 
 // ═══════════════════════════════════════════════════════
