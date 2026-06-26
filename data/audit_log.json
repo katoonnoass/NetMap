@@ -4206,5 +4206,67 @@
     "entity_id": "admin",
     "message": "Login realizado por \"admin\"",
     "extra": {}
+  },
+  {
+    "timestamp": "2026-06-26 18:45:10",
+    "project_id": null,
+    "action": "login",
+    "username": "admin",
+    "entity_type": "session",
+    "entity_id": "admin",
+    "message": "Login realizado por \"admin\"",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-06-26 18:45:35",
+    "project_id": null,
+    "action": "login",
+    "username": "admin",
+    "entity_type": "session",
+    "entity_id": "admin",
+    "message": "Login realizado por \"admin\"",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-06-26 18:47:32",
+    "project_id": null,
+    "action": "login",
+    "username": "admin",
+    "entity_type": "session",
+    "entity_id": "admin",
+    "message": "Login realizado por \"admin\"",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-06-26 18:48:05",
+    "project_id": null,
+    "action": "login",
+    "username": "admin",
+    "entity_type": "session",
+    "entity_id": "admin",
+    "message": "Login realizado por \"admin\"",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-06-26 18:48:17",
+    "project_id": "novo_projeto",
+    "action": "positions_saved",
+    "username": "admin",
+    "entity_type": "project",
+    "entity_id": "novo_projeto",
+    "message": "Posicoes da topologia atualizadas",
+    "extra": {
+      "count": 12
+    }
+  },
+  {
+    "timestamp": "2026-06-26 18:49:18",
+    "project_id": null,
+    "action": "login",
+    "username": "admin",
+    "entity_type": "session",
+    "entity_id": "admin",
+    "message": "Login realizado por \"admin\"",
+    "extra": {}
   }
 ]
