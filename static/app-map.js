@@ -2326,6 +2326,12 @@ function beginCableFrom(id){
 // ═══════════════════════════════════════════════════════
 // VIS NETWORK (TOPOLOGY TAB)
 // ═══════════════════════════════════════════════════════
+let _topoPhysicsOn=false;
+let _topoCurrentLayout='free';
+let _topoLabelsOn=true;
+let _topoEdgeStyle='curved';
+let _topoTypeFilter={};
+
 function preloadNodeIcons(){
   Object.entries(TYPE_CONFIG).forEach(([tipo,tc])=>{
     const c=document.createElement('canvas');c.width=60;c.height=60;
@@ -2357,36 +2363,62 @@ function refreshVisNodes(){
     iconRefreshScheduled=false;
     if(!network||!nodesDS) return;
     DB.elements.forEach(el=>{
-      if(NODE_CANVAS_ICONS[el.tipo]) nodesDS.update({id:el.id,shape:'circularImage',image:NODE_CANVAS_ICONS[el.tipo]});
+      if(!_topoTypeFilter[el.tipo]&&NODE_CANVAS_ICONS[el.tipo]) nodesDS.update({id:el.id,shape:'circularImage',image:NODE_CANVAS_ICONS[el.tipo]});
     });
   },200);
 }
 
 function buildVisData(){
-  const nodes=DB.elements.map(el=>{
+  const activeTypes=new Set(Object.keys(TYPE_CONFIG).filter(t=>!_topoTypeFilter[t]));
+  const nodes=DB.elements.filter(el=>activeTypes.has(el.tipo)).map(el=>{
     const tc=TYPE_CONFIG[el.tipo]||{color:'#888'};
     const sc=el.status==='offline'?'#ff3d57':el.status==='alerta'?'#ff9100':tc.color;
     const pos=DB.positions[String(el.id)]||{};
+    const isDark=document.documentElement.getAttribute('data-theme')==='dark';
+    const fontColor=isDark?'#e0e6f0':'#1a2536';
     return {
-      id:el.id,label:el.nome,
-      title:`<b>${esc(el.nome)}</b><br>${tc.label}<br>${esc(el.status)}${el.endereco?'<br>'+esc(el.endereco):''}`,
-      color:{background:sc+'22',border:sc,highlight:{background:sc+'44',border:'#fff'}},
-      font:{color:'#e8edf5',size:12},
+      id:el.id,label:_topoLabelsOn?el.nome:'',
+      title:`<b>${esc(el.nome)}</b><br>${tc.label}<br><span style="color:${sc}">${esc(el.status)}</span>${el.endereco?'<br>'+esc(el.endereco):''}`,
+      color:{background:sc+'18',border:sc,highlight:{background:sc+'33',border:'#fff'},hover:{background:sc+'28',border:'#fff'}},
+      font:{color:fontColor,size:12,face:'Manrope, Segoe UI, sans-serif',strokeWidth:isDark?3:0,strokeColor:isDark?'rgba(10,16,32,.9)':'transparent'},
       shape:NODE_CANVAS_ICONS[el.tipo]?'circularImage':'dot',
       image:NODE_CANVAS_ICONS[el.tipo],
-      size:el.tipo==='bgp'?28:el.tipo==='core'?24:18,
-      borderWidth:2,
+      size:el.tipo==='bgp'?30:el.tipo==='core'?26:el.tipo==='olt'?24:el.tipo==='ceo'||el.tipo==='cto'?20:16,
+      borderWidth:2.5,
+      shadow:{enabled:true,color:sc+'44',size:12,x:0,y:3},
       ...(pos.x!==undefined?{x:pos.x,y:pos.y,fixed:false}:{}),
     };
   });
-  const edges=DB.connections.map(c=>{
+  const activeNodeIds=new Set(nodes.map(n=>n.id));
+  const edges=DB.connections.filter(c=>activeNodeIds.has(c.from)&&activeNodeIds.has(c.to)).map(c=>{
     const fc=FIBER_COLORS[c.cor]||'#6b7280';
+    const smoothType=_topoEdgeStyle==='straight'?'dynamic':_topoEdgeStyle==='curved'?'curvedCW':'continuous';
     return {id:c.id,from:c.from,to:c.to,label:c.fibra,
-      color:{color:fc+'99',highlight:fc},font:{color:'#4a6a8a',size:9,background:'rgba(8,12,20,.8)'},
-      width:1.5,arrows:{to:{enabled:true,scaleFactor:0.4}},
-      smooth:{type:'curvedCW',roundness:0.1}};
+      color:{color:fc+'77',highlight:fc,hover:fc+'bb'},font:{color:'#4a6a8a',size:9,background:'rgba(8,12,20,.8)',strokeWidth:0},
+      width:1.5,arrows:{to:{enabled:true,scaleFactor:0.35,type:'arrow'}},
+      smooth:{type:smoothType,roundness:0.15},
+      hoverWidth:0.5,selectionWidth:1};
   });
   return {nodes,edges};
+}
+
+function getTopologyOptions(){
+  const base={
+    nodes:{borderWidth:2.5,shadow:{enabled:true,color:'rgba(0,0,0,.35)',size:10}},
+    interaction:{hover:true,tooltipDelay:200,dragNodes:true,dragView:true,zoomView:true,multiselect:false,navigationButtons:false,keyboard:{enabled:true}},
+    edges:{selectionWidth:1,hoverWidth:0.5}
+  };
+  if(_topoCurrentLayout==='hierarchical'){
+    base.layout={hierarchical:{enabled:true,direction:'UD',sortMethod:'directed',levelSeparation:150,nodeSpacing:120,blockShifting:true,edgeMinimization:true,parentCentralization:true}};
+    base.physics={enabled:false};
+  }else if(_topoCurrentLayout==='radial'){
+    base.layout={hierarchical:{enabled:false}};
+    base.physics={enabled:true,hierarchicalRepulsion:{centralGravity:0.4,spingLength:200,nodeDistance:120,damping:0.09},stabilization:{enabled:true,iterations:150,fit:true}};
+  }else{
+    base.layout={improvedLayout:true};
+    base.physics={enabled:_topoPhysicsOn,barnesHut:{gravitationalConstant:-4000,springLength:180,damping:0.15},stabilization:{enabled:true,iterations:120,fit:true}};
+  }
+  return base;
 }
 
 function initTopology(){
@@ -2394,15 +2426,10 @@ function initTopology(){
   const data=buildVisData();
   nodesDS=new vis.DataSet(data.nodes);
   edgesDS=new vis.DataSet(data.edges);
-  network=new vis.Network(document.getElementById('network-canvas'),{nodes:nodesDS,edges:edgesDS},{
-    nodes:{borderWidth:2,shadow:{enabled:true,color:'rgba(0,0,0,.5)',size:8}},
-    physics:{enabled:true,barnesHut:{gravitationalConstant:-4000,springLength:180,damping:.15},
-      stabilization:{enabled:true,iterations:120,fit:true}},
-    interaction:{hover:true,tooltipDelay:300,dragNodes:true},
-    layout:{improvedLayout:true},
-  });
+  network=new vis.Network(document.getElementById('network-canvas'),{nodes:nodesDS,edges:edgesDS},getTopologyOptions());
   network.on('stabilizationIterationsDone',()=>{
-    network.setOptions({physics:{enabled:false}});saveVisPositions();
+    if(!_topoPhysicsOn) network.setOptions({physics:{enabled:false}});
+    saveVisPositions();updateTopoStats();
   });
   network.on('dragEnd',p=>{
     if(p.nodes.length>0){p.nodes.forEach(id=>{DB.positions[String(id)]=network.getPosition(id);});saveVisPositions();}
@@ -2415,14 +2442,131 @@ function initTopology(){
   network.on('doubleClick',p=>{if(p.nodes.length>0)openEditModal(p.nodes[0]);});
   network.on('oncontext',function(p){
     p.event.preventDefault();
-    const nodeId = network.getNodeAt({x: p.event.clientX, y: p.event.clientY});
-    if (nodeId) {
-      ctxTargetId = parseInt(nodeId);
-      ctxTargetType = null;
-      showCtxMenu(p.event.clientX, p.event.clientY);
-    }
+    const nodeId=network.getNodeAt({x:p.event.clientX,y:p.event.clientY});
+    if(nodeId){ctxTargetId=parseInt(nodeId);ctxTargetType=null;showCtxMenu(p.event.clientX,p.event.clientY);}
   });
   preloadNodeIcons();
+  populateTopoLegend();
+  updateTopoStats();
+  updateTopoButtons();
+}
+
+function toggleTopologyPhysics(){
+  _topoPhysicsOn=!_topoPhysicsOn;
+  if(network) network.setOptions({physics:{enabled:_topoPhysicsOn}});
+  updateTopoButtons();updateTopoStats();
+}
+
+function setTopologyLayout(mode){
+  _topoCurrentLayout=mode;
+  if(network){
+    const data=buildVisData();
+    nodesDS.clear();edgesDS.clear();
+    nodesDS.add(data.nodes);edgesDS.add(data.edges);
+    network.setOptions(getTopologyOptions());
+    if(mode==='hierarchical'||mode==='radial'){
+      network.stabilize();
+    }else{
+      Object.entries(DB.positions).forEach(([id,pos])=>{
+        const nid=parseInt(id);
+        if(nodesDS.get(nid)) nodesDS.update({id:nid,x:pos.x,y:pos.y});
+      });
+    }
+  }
+  updateTopoButtons();
+}
+
+function topologyFitView(){
+  if(network) network.fit({animation:{duration:400,easingFunction:'easeInOutCubic'}});
+}
+
+function topologyZoom(delta){
+  if(!network) return;
+  const scale=network.getScale();
+  network.moveTo({scale:Math.max(0.1,Math.min(5,scale+delta))});
+}
+
+function toggleTopologyLabels(){
+  _topoLabelsOn=!_topoLabelsOn;
+  if(!nodesDS) return;
+  DB.elements.forEach(el=>{
+    if(nodesDS.get(el.id)) nodesDS.update({id:el.id,label:_topoLabelsOn?el.nome:''});
+  });
+  updateTopoButtons();
+}
+
+function toggleTopologyEdgeStyle(){
+  const styles=['curved','straight','continuous'];
+  const idx=styles.indexOf(_topoEdgeStyle);
+  _topoEdgeStyle=styles[(idx+1)%styles.length];
+  if(!edgesDS) return;
+  DB.connections.forEach(c=>{
+    if(edgesDS.get(c.id)){
+      const smoothType=_topoEdgeStyle==='straight'?'dynamic':_topoEdgeStyle==='curved'?'curvedCW':'continuous';
+      edgesDS.update({id:c.id,smooth:{type:smoothType,roundness:0.15}});
+    }
+  });
+  updateTopoButtons();
+  toast('Arestas: '+(_topoEdgeStyle==='curved'?'curvas':_topoEdgeStyle==='straight'?'retas':'contínuas'),'info');
+}
+
+function populateTopoLegend(){
+  const body=document.getElementById('topo-legend-body');
+  if(!body) return;
+  const counts={};
+  DB.elements.forEach(el=>{counts[el.tipo]=(counts[el.tipo]||0)+1;});
+  body.innerHTML=Object.entries(TYPE_CONFIG).map(([tipo,tc])=>{
+    const dimmed=_topoTypeFilter[tipo]?'dimmed':'';
+    return `<div class="topo-legend-item ${dimmed}" data-tipo="${tipo}" onclick="toggleTopoTypeFilter('${tipo}')">
+      <div class="topo-legend-dot" style="background:${tc.color}"></div>
+      <span>${tc.label}</span>
+      <span class="topo-legend-count">${counts[tipo]||0}</span>
+    </div>`;
+  }).join('');
+}
+
+function toggleTopoTypeFilter(tipo){
+  _topoTypeFilter[tipo]=!_topoTypeFilter[tipo];
+  if(!_topoTypeFilter[tipo]) delete _topoTypeFilter[tipo];
+  if(!network||!nodesDS) return;
+  const data=buildVisData();
+  const activeIds=new Set(data.nodes.map(n=>n.id));
+  nodesDS.getIds().forEach(id=>{if(!activeIds.has(id))nodesDS.remove(id);});
+  data.nodes.forEach(n=>{if(!nodesDS.get(n.id))nodesDS.add(n);else nodesDS.update(n);});
+  edgesDS.getIds().forEach(id=>{if(!activeIds.has(edgesDS.get(id).from)&&!activeIds.has(edgesDS.get(id).to))edgesDS.remove(id);});
+  data.edges.forEach(e=>{if(!edgesDS.get(e.id))edgesDS.add(e);else edgesDS.update(e);});
+  populateTopoLegend();updateTopoStats();
+}
+
+function toggleTopoLegend(){
+  const body=document.getElementById('topo-legend-body');
+  const chev=document.getElementById('topo-legend-chevron');
+  if(body){body.classList.toggle('collapsed');}
+  if(chev) chev.style.transform=body.classList.contains('collapsed')?'rotate(-90deg)':'';
+}
+
+function updateTopoStats(){
+  const nc=document.getElementById('topo-node-count');
+  const ec=document.getElementById('topo-edge-count');
+  const ps=document.getElementById('topo-physics-state');
+  if(nc) nc.textContent=(nodesDS?nodesDS.length:0)+' nós';
+  if(ec) ec.textContent=(edgesDS?edgesDS.length:0)+' arestas';
+  if(ps) ps.textContent='física: '+(_topoPhysicsOn?'on':'off');
+}
+
+function updateTopoButtons(){
+  const pb=document.getElementById('topo-btn-physics');
+  if(pb){pb.classList.toggle('active-soft',_topoPhysicsOn);}
+  const fb=document.getElementById('topo-btn-free');
+  const hb=document.getElementById('topo-btn-hierarchical');
+  const rb=document.getElementById('topo-btn-radial');
+  if(fb) fb.classList.toggle('active',_topoCurrentLayout==='free');
+  if(hb) hb.classList.toggle('active',_topoCurrentLayout==='hierarchical');
+  if(rb) rb.classList.toggle('active',_topoCurrentLayout==='radial');
+  const lb=document.getElementById('topo-btn-labels');
+  if(lb){lb.classList.toggle('active-soft',_topoLabelsOn);}
+  const eb=document.getElementById('topo-btn-edges');
+  if(eb){eb.classList.toggle('active-soft',_topoEdgeStyle!=='curved');}
 }
 
 async function saveVisPositions(){
@@ -2441,6 +2585,7 @@ async function refreshTopology(){
     const nid=parseInt(id);
     if(nodesDS.get(nid)) nodesDS.update({id:nid,x:pos.x,y:pos.y});
   });
+  populateTopoLegend();updateTopoStats();
 }
 
 registerPublicApi('map', {
@@ -2513,6 +2658,16 @@ registerPublicApi('map', {
   saveVisPositions,
   refreshTopology,
   scheduleMapRender,
+  toggleTopologyPhysics,
+  setTopologyLayout,
+  topologyFitView,
+  topologyZoom,
+  toggleTopologyLabels,
+  toggleTopologyEdgeStyle,
+  toggleTopoTypeFilter,
+  toggleTopoLegend,
+  populateTopoLegend,
+  updateTopoStats,
   filterMapByStatus,
   populateMapLegend,
   toggleMapLayer,
@@ -2577,6 +2732,12 @@ registerPublicApi('map', {
   'toggleDraftMode',
   'promoteToReal',
   'toggleDraftVisibility',
+  'toggleTopologyPhysics',
+  'setTopologyLayout',
+  'toggleTopologyLabels',
+  'toggleTopologyEdgeStyle',
+  'toggleTopoTypeFilter',
+  'toggleTopoLegend',
   'finishFenceMode',
   'cancelFenceMode',
   'drawFenceOnMap',
