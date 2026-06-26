@@ -1125,18 +1125,6 @@ function toggleDraftMode(){
 }
 
 async function promoteToReal(id, type){
-
-async function registerInspection(id){
-  const el=DB.elements.find(e=>e.id===id);
-  if(!el) return;
-  const today=new Date().toISOString().slice(0,10);
-  const saved=await api('PUT',papi(`/elements/${id}`),{ultima_inspecao:today});
-  if(!saved) return;
-  el.ultima_inspecao=today;
-  addOrUpdateMarker(el);
-  showPanel(id);
-  toast('🔍 Inspeção registrada para '+today,'success');
-}
   if(type==='element'){
     const el=DB.elements.find(e=>e.id===id);
     if(!el||!el.draft) return;
@@ -1164,6 +1152,17 @@ function toggleDraftVisibility(show){
   refreshAllMarkers();
   refreshAllCables();
 }
+
+async function registerInspection(id){
+  const el=DB.elements.find(e=>e.id===id);
+  if(!el) return;
+  const today=new Date().toISOString().slice(0,10);
+  const saved=await api('PUT',papi(`/elements/${id}`),{ultima_inspecao:today});
+  if(!saved) return;
+  el.ultima_inspecao=today;
+  addOrUpdateMarker(el);
+  showPanel(id);
+  toast('🔍 Inspeção registrada para '+today,'success');
 }
 
 let traceHighlightLayer = null;
@@ -1193,17 +1192,7 @@ function highlightPathOnMap(pathData){
       opacity: 0.9,
       dashArray: '10,8',
       lineCap: 'round',
-  }).addTo(geoMap);
-
-  L.GridLayer.prototype._updateOpacity = function(){
-    var t;
-    for(t in this._tiles){
-      var s=this._tiles[t];
-      if(s.current&&s.loaded){s.active=true;L.DomUtil.setOpacity(s.el,1);}
-    }
-  };
-  L.GridLayer.prototype._onOpaqueTile=L.Util.falseFn;
-
+    }).addTo(geoMap);
 
     geoMap.fitBounds(traceHighlightLayer.getBounds(), {padding:[60,60], animate:true});
   }
