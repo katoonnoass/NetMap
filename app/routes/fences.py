@@ -4,14 +4,7 @@ Rotas de geocercas (fences).
 
 from flask import Blueprint, jsonify, request
 
-from ..services import project_service
-from ..services.fence_service import (
-    list_fences,
-    create_fence,
-    update_fence,
-    delete_fence,
-    elements_in_fence,
-)
+from ..services import fence_service, project_service
 from .. import limiter
 from ..utils.auth import require_login, require_perm
 
@@ -24,7 +17,7 @@ def get_fences(pid):
     db = project_service.load_project(pid)
     if not db:
         return jsonify({"error": "Not found"}), 404
-    return jsonify({"items": list_fences(db)})
+    return jsonify({"items": fence_service.list_fences(db)})
 
 
 @fence_bp.route("/api/projects/<pid>/fences", methods=["POST"])
@@ -37,7 +30,7 @@ def add_fence(pid):
     data = request.get_json(silent=True) or {}
     if not data.get("coordinates") or len(data["coordinates"]) < 3:
         return jsonify({"error": "Coordenadas insuficientes (min 3 pontos)"}), 400
-    fence = create_fence(db, pid, data)
+    fence = fence_service.create_fence(db, pid, data)
     project_service.save_project(pid, db)
     return jsonify(fence), 201
 
@@ -49,7 +42,7 @@ def edit_fence(pid, fence_id):
     if not db:
         return jsonify({"error": "Not found"}), 404
     data = request.get_json(silent=True) or {}
-    fence = update_fence(db, fence_id, data)
+    fence = fence_service.update_fence(db, fence_id, data)
     if not fence:
         return jsonify({"error": "Geocerca nao encontrada"}), 404
     project_service.save_project(pid, db)
@@ -62,7 +55,7 @@ def remove_fence(pid, fence_id):
     db = project_service.load_project(pid)
     if not db:
         return jsonify({"error": "Not found"}), 404
-    if not delete_fence(db, fence_id):
+    if not fence_service.delete_fence(db, fence_id):
         return jsonify({"error": "Geocerca nao encontrada"}), 404
     project_service.save_project(pid, db)
     return jsonify({"ok": True})
@@ -74,4 +67,4 @@ def get_fence_elements(pid, fence_id):
     db = project_service.load_project(pid)
     if not db:
         return jsonify({"error": "Not found"}), 404
-    return jsonify({"items": elements_in_fence(db, fence_id)})
+    return jsonify({"items": fence_service.elements_in_fence(db, fence_id)})

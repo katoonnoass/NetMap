@@ -59,8 +59,3 @@ def log_event(
         events.append(event)
         save_events(events)
     return event
-
-
-def list_project_events(project_id: str, limit: int = 50) -> list[dict]:
-    events = [event for event in load_events() if event.get("project_id") == project_id]
-    return list(reversed(events[-max(1, min(limit, 200)):]))

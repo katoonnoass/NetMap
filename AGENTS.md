@@ -56,6 +56,18 @@ NETMAP_E2E_URL=http://127.0.0.1:5005 NETMAP_E2E_USER=admin \
 - No default admin password in code; `DEFAULT_ADMIN_PASSWORD` env var is required on first run.
 - Frontend has **no build/bundle step** — JS and CSS are served directly from `static/`.
 - Frontend regression tests assert specific string patterns in `app.css` and JS files; changing CSS/JS may break them.
+- Service imports padronizados: `from ..services import xxx_service` (via `__init__.py`); não usar `from ..services.xxx_service import func`.
+- `app/services/__init__.py` deve importar todos os 22 módulos de serviço — manter atualizado ao adicionar novos.
+
+## Cleanup (2026-06-26)
+
+- **Removidos:** `=3.0.0` (arquivo vazio), `backups/` (91 MB), `static/netmap_mobile.apk` (106 MB), `.omo/` (cache opencode), `tools/__pycache__/`
+- **Código morto removido:** `parse_dates()`, `_mask_cep()`, `list_all()`, `list_project_events()`, `add_cache()` (duplicata em static_files.py)
+- **Import morto removido:** `sanitize_all_projects` do `run.py`
+- **Padronizado:** `services/__init__.py` agora importa todos os 22 serviços; 5 routes padronizadas para `from ..services import xxx_service`
+- **Testes:** 21/21 passando após todas as mudanças
+- **Riscos restantes:** `sanitize_all_projects()` permanece em `project_service.py` (função útil para manutenção, mas não é chamada no startup)
+- **Ver detalhes:** `CLEANUP_PLAN.md` e `CLEANUP_REPORT.md`
 
 ## Migration
 

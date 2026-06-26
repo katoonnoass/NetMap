@@ -8,17 +8,6 @@ from flask import Blueprint, request, send_file, current_app
 static_bp = Blueprint("static_files", __name__)
 
 
-@static_bp.after_request
-def add_cache(response):
-    if request.path.startswith("/static/"):
-        response.headers["Cache-Control"] = (
-            "public, max-age=31536000, immutable"
-            if request.args.get("v")
-            else "public, max-age=3600"
-        )
-    return response
-
-
 @static_bp.route("/static/vis-network.min.js")
 def serve_vis():
     path = os.path.join(current_app.static_folder, "vis-network.min.js")

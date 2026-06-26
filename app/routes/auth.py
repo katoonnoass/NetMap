@@ -14,8 +14,7 @@ from flask import (
 )
 
 from .. import limiter
-from ..services import audit_service
-from ..services.user_service import authenticate, change_password, ensure_admin
+from ..services import audit_service, user_service
 from ..utils.auth import current_user, require_login
 
 
@@ -39,7 +38,7 @@ def get_csrf_token():
 @auth_bp.route("/api/auth/login", methods=["POST"])
 @limiter.limit("10 per minute")
 def do_login():
-    ensure_admin()
+    user_service.ensure_admin()
     data = request.get_json(silent=True) or {}
     username = str(data.get("username", "")).strip().lower()
     password = str(data.get("password", ""))
@@ -47,7 +46,7 @@ def do_login():
     if not username or not password:
         return jsonify({"error": "Usuario e senha sao obrigatorios"}), 400
 
-    user = authenticate(username, password)
+    user = user_service.authenticate(username, password)
     if not user:
         audit_service.log_event(
             None,
@@ -118,7 +117,7 @@ def change_own_password():
     new_password = str(data.get("new_password", ""))
     username = session["user"]
     try:
-        change_password(username, current_password, new_password)
+        user_service.change_password(username, current_password, new_password)
     except LookupError as exc:
         return jsonify({"error": str(exc)}), 404
     except ValueError as exc:

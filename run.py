@@ -5,7 +5,7 @@ Execute: python run.py
 import socket
 
 from app import create_app
-from app.services.project_service import ensure_demo, sanitize_all_projects
+from app.services.project_service import ensure_demo
 from app.services.user_service import ensure_admin
 
 app = create_app()
@@ -14,7 +14,6 @@ if __name__ == "__main__":
     with app.app_context():
         ensure_admin()
         ensure_demo()
-        # sanitize_all_projects()  # runs on every element anyway
 
     try:
         local_ip = socket.gethostbyname(socket.gethostname())

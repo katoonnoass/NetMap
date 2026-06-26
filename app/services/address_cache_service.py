@@ -35,15 +35,6 @@ def _normalize_cep(cep):
     return (cep or "").replace("-", "").strip()
 
 
-def _mask_cep(cep):
-    cep = _normalize_cep(cep)
-    if len(cep) >= 5:
-        return cep[:5] + "-***"
-    elif cep:
-        return "***"
-    return ""
-
-
 def load_cache():
     """Carrega cache de forma segura. Se JSON estiver corrompido, faz backup e retorna []."""
     path = _get_cache_path()
@@ -150,8 +141,3 @@ def save(lat, lng, cep="", logradouro="", bairro="", cidade="", uf=""):
         cache.append(entry)
         save_cache(cache)
         return entry
-
-
-def list_all():
-    """Retorna todo o cache (para debug/admin)."""
-    return load_cache()

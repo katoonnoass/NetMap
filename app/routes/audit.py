@@ -4,8 +4,7 @@ Rotas de auditoria e visao operacional.
 
 from flask import Blueprint, jsonify, request, current_app
 
-from ..services import audit_service, project_service, summary_service
-from ..services.snapshot_service import take_snapshot, get_snapshots
+from ..services import audit_service, project_service, snapshot_service, summary_service
 from ..utils.auth import require_login, require_perm
 from ..utils.query import (
     parse_pagination,
@@ -90,7 +89,7 @@ def create_snapshot(pid):
     if not db:
         return jsonify({"error": "Not found"}), 404
     data_dir = current_app.config.get("DATA_DIR", "data")
-    snap = take_snapshot(db, pid, data_dir)
+    snap = snapshot_service.take_snapshot(db, pid, data_dir)
     return jsonify(snap)
 
 
@@ -99,5 +98,5 @@ def create_snapshot(pid):
 def list_snapshots(pid):
     days = max(1, min(int(request.args.get("days", 30)), 365))
     data_dir = current_app.config.get("DATA_DIR", "data")
-    snapshots = get_snapshots(pid, data_dir, days)
+    snapshots = snapshot_service.get_snapshots(pid, data_dir, days)
     return jsonify({"snapshots": snapshots})

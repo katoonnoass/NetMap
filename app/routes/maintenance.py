@@ -4,14 +4,7 @@ Rotas de agendamento de manutencao.
 
 from flask import Blueprint, jsonify, request
 
-from ..services import project_service
-from ..services.maintenance_service import (
-    list_schedules,
-    create_schedule,
-    update_schedule,
-    delete_schedule,
-    upcoming_schedules,
-)
+from ..services import maintenance_service, project_service
 from .. import limiter
 from ..utils.auth import require_login, require_perm
 
@@ -24,7 +17,7 @@ def get_maintenance(pid):
     db = project_service.load_project(pid)
     if not db:
         return jsonify({"error": "Not found"}), 404
-    return jsonify({"items": list_schedules(db)})
+    return jsonify({"items": maintenance_service.list_schedules(db)})
 
 
 @maintenance_bp.route("/api/projects/<pid>/maintenance/upcoming")
@@ -34,7 +27,7 @@ def get_upcoming_maintenance(pid):
     if not db:
         return jsonify({"error": "Not found"}), 404
     days = max(1, min(int(request.args.get("days", 7)), 365))
-    return jsonify({"items": upcoming_schedules(db, days)})
+    return jsonify({"items": maintenance_service.upcoming_schedules(db, days)})
 
 
 @maintenance_bp.route("/api/projects/<pid>/maintenance", methods=["POST"])
@@ -47,7 +40,7 @@ def add_maintenance(pid):
     data = request.get_json(silent=True) or {}
     if not data.get("title"):
         return jsonify({"error": "Titulo obrigatorio"}), 400
-    sched = create_schedule(db, pid, data)
+    sched = maintenance_service.create_schedule(db, pid, data)
     project_service.save_project(pid, db)
     return jsonify(sched), 201
 
@@ -59,7 +52,7 @@ def edit_maintenance(pid, sched_id):
     if not db:
         return jsonify({"error": "Not found"}), 404
     data = request.get_json(silent=True) or {}
-    sched = update_schedule(db, sched_id, data)
+    sched = maintenance_service.update_schedule(db, sched_id, data)
     if not sched:
         return jsonify({"error": "Agendamento nao encontrado"}), 404
     project_service.save_project(pid, db)
@@ -72,7 +65,7 @@ def remove_maintenance(pid, sched_id):
     db = project_service.load_project(pid)
     if not db:
         return jsonify({"error": "Not found"}), 404
-    if not delete_schedule(db, sched_id):
+    if not maintenance_service.delete_schedule(db, sched_id):
         return jsonify({"error": "Agendamento nao encontrado"}), 404
     project_service.save_project(pid, db)
     return jsonify({"ok": True})

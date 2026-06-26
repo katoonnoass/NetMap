@@ -43,15 +43,6 @@ def parse_search() -> str | None:
     return q if q else None
 
 
-def parse_dates() -> dict:
-    dates = {}
-    for key in ("created_from", "created_to", "updated_from", "updated_to"):
-        val = request.args.get(key)
-        if val:
-            dates[key] = val
-    return dates
-
-
 def apply_filters(items: list[dict], filters: dict) -> list[dict]:
     for field, values in filters.items():
         items = [item for item in items if str(item.get(field, "")).lower() in values]
