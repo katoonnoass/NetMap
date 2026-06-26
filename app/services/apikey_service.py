@@ -16,7 +16,7 @@ def _keys_path(data_dir: str) -> str:
 
 def _load_keys(data_dir: str) -> list[dict]:
     path = _keys_path(data_dir)
-    data = load_json(path)
+    data = load_json(path, {"keys": []})
     return data.get("keys", []) if data else []
 
 

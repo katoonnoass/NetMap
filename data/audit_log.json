@@ -4186,5 +4186,25 @@
     "extra": {
       "count": 12
     }
+  },
+  {
+    "timestamp": "2026-06-26 18:35:29",
+    "project_id": null,
+    "action": "login",
+    "username": "admin",
+    "entity_type": "session",
+    "entity_id": "admin",
+    "message": "Login realizado por \"admin\"",
+    "extra": {}
+  },
+  {
+    "timestamp": "2026-06-26 18:37:44",
+    "project_id": null,
+    "action": "login",
+    "username": "admin",
+    "entity_type": "session",
+    "entity_id": "admin",
+    "message": "Login realizado por \"admin\"",
+    "extra": {}
   }
 ]

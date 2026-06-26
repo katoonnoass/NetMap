@@ -60,7 +60,7 @@ def take_snapshot(project: dict, pid: str, data_dir: str) -> dict:
         "cto_total": cto_total,
     }
     path = _snap_path(data_dir, pid)
-    history = load_json(path) or {"snapshots": []}
+    history = load_json(path, {"snapshots": []})
     existing = [i for i, s in enumerate(history["snapshots"]) if s.get("date") == today]
     if existing:
         history["snapshots"][existing[0]] = snap
@@ -75,6 +75,6 @@ def take_snapshot(project: dict, pid: str, data_dir: str) -> dict:
 
 def get_snapshots(pid: str, data_dir: str, days: int = 30) -> list[dict]:
     path = _snap_path(data_dir, pid)
-    history = load_json(path) or {"snapshots": []}
+    history = load_json(path, {"snapshots": []})
     cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
     return [s for s in history.get("snapshots", []) if s.get("date", "") >= cutoff]
