@@ -3,8 +3,12 @@ import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/project_provider.dart';
 import 'providers/element_provider.dart';
+import 'providers/incident_provider.dart';
+import 'providers/fence_provider.dart';
+import 'providers/maintenance_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/project_list_screen.dart';
+import 'services/offline_service.dart';
 
 class NetMapMobileApp extends StatelessWidget {
   const NetMapMobileApp({super.key});
@@ -16,6 +20,10 @@ class NetMapMobileApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => ProjectProvider()),
         ChangeNotifierProvider(create: (_) => ElementProvider()),
+        ChangeNotifierProvider(create: (_) => IncidentProvider()),
+        ChangeNotifierProvider(create: (_) => FenceProvider()),
+        ChangeNotifierProvider(create: (_) => MaintenanceProvider()),
+        ChangeNotifierProvider.value(value: OfflineService.instance),
       ],
       child: MaterialApp(
         title: 'NetMap Mobile',
@@ -49,8 +57,27 @@ class NetMapMobileApp extends StatelessWidget {
   }
 }
 
-class AuthGate extends StatelessWidget {
+class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
+
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  @override
+  void initState() {
+    super.initState();
+    _initServices();
+  }
+
+  Future<void> _initServices() async {
+    await OfflineService.instance.init();
+    // Periodically sync offline queue when online
+    if (OfflineService.instance.pendingCount > 0) {
+      OfflineService.instance.syncAll();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -62,14 +89,7 @@ class AuthGate extends StatelessWidget {
           );
         }
         if (auth.isAuthenticated) {
-          return Consumer<ProjectProvider>(
-            builder: (context, projects, _) {
-              if (projects.projects.isEmpty && !projects.isLoading) {
-                projects.fetchProjects();
-              }
-              return const ProjectListScreen();
-            },
-          );
+          return const ProjectListScreen();
         }
         return const LoginScreen();
       },

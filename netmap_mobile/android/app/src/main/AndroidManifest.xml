@@ -9,7 +9,7 @@
     <application
         android:label="NetMap Mobile"
         android:name="${applicationName}"
-        android:icon="@android:drawable/ic_menu_mapmode"
+        android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true"
         android:allowBackup="false">
 

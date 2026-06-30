@@ -167,14 +167,6 @@ class IncidentComment {
     );
   }
 
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'author': author,
-        'text': text,
-        'created_at': createdAt.toIso8601String(),
-      };
-  }
-
   IncidentComment copyWith({
     int? id,
     String? author,
@@ -188,4 +180,11 @@ class IncidentComment {
       createdAt: createdAt ?? this.createdAt,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'author': author,
+        'text': text,
+        'created_at': createdAt.toIso8601String(),
+      };
 }

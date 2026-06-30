@@ -5,7 +5,9 @@ Application Factory — cria e configura a instância do Flask.
 import os
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 
+from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
 from flask_compress import Compress
 from flask_cors import CORS
@@ -15,6 +17,8 @@ from flask_wtf.csrf import CSRFProtect
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .config import Config
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 from .utils.storage import (
     StorageConflictError,
     database_status,
@@ -74,6 +78,8 @@ def create_app(config_class=Config):
         if request.method in ("GET", "HEAD", "OPTIONS", "TRACE"):
             return
         if request.path.startswith("/api/"):
+            if request.path == "/api/auth/login":
+                return
             auth = request.headers.get("Authorization", "")
             if auth.startswith("Bearer "):
                 return

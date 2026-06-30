@@ -98,8 +98,7 @@ class _ElementFormScreenState extends State<ElementFormScreen> {
     final p = Provider.of<ElementProvider>(context, listen: false);
     try {
       if (_edit) {
-        await p.updateElement(widget.projectId, widget.element!.id, data, photoPath: _fotoPath);
-        // Se online e tem foto, upload imediato
+        await p.updateElement(widget.projectId, widget.element!.id, data);
         if (p.isOnline && _fotoPath != null) {
           final ok = await _uploadFoto(widget.element!.id);
           if (!ok) {
@@ -118,9 +117,11 @@ class _ElementFormScreenState extends State<ElementFormScreen> {
           }
         }
       }
+      setState(() => _loading = false);
       if (mounted) { Navigator.pop(context); }
-    } catch (e) { setState(() => _error = 'Erro ao salvar: $e'); }
-    setState(() => _loading = false);
+    } catch (e) {
+      setState(() { _error = 'Erro ao salvar: $e'; _loading = false; });
+    }
   }
 
   Future<void> _tirarFoto() async {
@@ -241,7 +242,6 @@ class _ElementFormScreenState extends State<ElementFormScreen> {
             ]),
           ),
         ),
-        if (_loading) Container(color: Colors.black26, child: const Center(child: CircularProgressIndicator())),
       ]),
     );
   }

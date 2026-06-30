@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace "com.netmap.mobile"
-    compileSdk 34
+    compileSdk 36
     ndkVersion "25.1.8937393"
 
     compileOptions {
@@ -24,7 +24,7 @@ android {
 
     defaultConfig {
         applicationId "com.netmap.mobile"
-        minSdk 21
+        minSdkVersion flutter.minSdkVersion
         targetSdk 34
         versionCode 1
         versionName "1.0.0"

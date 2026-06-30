@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:netmap_mobile/config/api_config.dart';
 import 'package:netmap_mobile/models/project.dart';
 import 'package:netmap_mobile/providers/auth_provider.dart';
 import 'package:netmap_mobile/providers/project_provider.dart';
+import 'package:netmap_mobile/services/api_service.dart';
 import 'package:netmap_mobile/screens/map_screen.dart';
 
 class ProjectListScreen extends StatefulWidget {
@@ -28,6 +30,68 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
 
   void _logout() => Provider.of<AuthProvider>(context, listen: false).logout();
 
+  Future<void> _createProject() async {
+    final nomeCtrl = TextEditingController();
+    final descCtrl = TextEditingController();
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Novo Projeto'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+            controller: nomeCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Nome do projeto *',
+              border: OutlineInputBorder(),
+            ),
+            autofocus: true,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: descCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Descricao',
+              border: OutlineInputBorder(),
+            ),
+            maxLines: 2,
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () {
+            if (nomeCtrl.text.trim().isEmpty) return;
+            Navigator.pop(ctx, true);
+          }, child: const Text('Criar')),
+        ],
+      ),
+    );
+    if (result == true && nomeCtrl.text.trim().isNotEmpty) {
+      try {
+        final api = ApiService();
+        final response = await api.post(
+          ApiConfig.projectsEndpoint,
+          data: {'name': nomeCtrl.text.trim(), 'description': descCtrl.text.trim()},
+        );
+        if (response.statusCode == 201 || response.statusCode == 200) {
+          await Provider.of<ProjectProvider>(context, listen: false).fetchProjects();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Projeto criado'), behavior: SnackBarBehavior.floating),
+            );
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Erro ao criar: ${e.toString().replaceFirst("ApiException", "")}')),
+          );
+        }
+      }
+    }
+    nomeCtrl.dispose();
+    descCtrl.dispose();
+  }
+
   void _open(Project project) {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => MapScreen(project: project)),
@@ -52,6 +116,11 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: _buildBody(pp, projects),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _createProject,
+        tooltip: 'Novo projeto',
+        child: const Icon(Icons.add),
       ),
     );
   }
@@ -140,27 +209,9 @@ class _LoadingList extends StatelessWidget {
   const _LoadingList();
 
   @override
-  Widget build(BuildContext context) => ListView.builder(
-        padding: const EdgeInsets.all(12),
-        itemCount: 6,
-        itemBuilder: (_, __) => Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          child: Container(
-            height: 90,
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(width: 180, height: 16, color: Colors.black12),
-                const SizedBox(height: 10),
-                Container(width: 120, height: 14, color: Colors.black12),
-                const SizedBox(height: 8),
-                Container(width: 90, height: 12, color: Colors.black12),
-              ],
-            ),
-          ),
-        ),
-      );
+  Widget build(BuildContext context) {
+    return const Center(child: CircularProgressIndicator());
+  }
 }
 
 class _EmptyState extends StatelessWidget {

@@ -29,17 +29,27 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final cookie = await StorageService.instance.getCookie();
-      if (cookie != null && cookie.isNotEmpty) {
+      // Check if we have an API key (Bearer auth)
+      final apiKey = await StorageService.instance.getApiKey();
+      if (apiKey != null && apiKey.isNotEmpty) {
         final hasSession = await _authService.checkSession();
         if (hasSession) {
           _authResponse = await _authService.me();
         }
+      } else {
+        // Try session cookie fallback
+        final cookie = await StorageService.instance.getCookie();
+        if (cookie != null && cookie.isNotEmpty) {
+          final hasSession = await _authService.checkSession();
+          if (hasSession) {
+            _authResponse = await _authService.me();
+          }
+        }
       }
     } on ApiException {
-      // Session expired or invalid — that's fine, user needs to login.
+      // Session expired — user needs to log in
     } catch (_) {
-      // Best-effort session restore.
+      // Best-effort restore
     }
 
     _isLoading = false;
@@ -53,10 +63,14 @@ class AuthProvider extends ChangeNotifier {
 
     try {
       _authResponse = await _authService.login(username, password);
-      await StorageService.instance.saveUsername(username);
+      if (_authResponse?.ok == true) {
+        await StorageService.instance.saveUsername(username);
+      } else {
+        _error = _authResponse?.error ?? 'Credenciais invalidas';
+      }
       _isLoading = false;
       notifyListeners();
-      return true;
+      return _authResponse?.ok == true;
     } on ApiException catch (e) {
       _error = e.message;
       _isLoading = false;
@@ -77,7 +91,6 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Clears transient error without changing auth state.
   void clearError() {
     _error = null;
     notifyListeners();

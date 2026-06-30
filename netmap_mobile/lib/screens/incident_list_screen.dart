@@ -239,10 +239,8 @@ class _IncidentListScreenState extends State<IncidentListScreen> {
                   Text(inc.assignedTo, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
                 ]),
               ],
-              if (inc.createdAt != null) ...[
-                const SizedBox(height: 2),
+              const SizedBox(height: 2),
                 Text(inc.createdAt.toIso8601String().split('T')[0], style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-              ],
               if (inc.comments.isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Row(children: [
@@ -339,9 +337,10 @@ class _IncidentListScreenState extends State<IncidentListScreen> {
     } catch (e) {
       if (mounted) Navigator.pop(context);
       if (mounted) {
-        scaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erro ao exportar: $e')),
-      );
+        scaffoldMessenger.showSnackBar(
+          SnackBar(content: Text('Erro ao exportar: $e')),
+        );
+      }
     }
   }
 }

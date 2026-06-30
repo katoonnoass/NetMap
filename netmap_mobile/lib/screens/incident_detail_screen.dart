@@ -91,6 +91,10 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
                       const SizedBox(width: 8),
                       _chip(incident.categoryLabel, Colors.blueGrey),
                     ]),
+                    if (canEdit) ...[
+                      const SizedBox(height: 8),
+                      _statusActions(incident, ip),
+                    ],
                     if (incident.assignedTo.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       Row(children: [
@@ -156,6 +160,55 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
     );
   }
 
+  Widget _statusActions(Incident incident, IncidentProvider ip) {
+    final actions = <_StatusAction>[];
+    switch (incident.status) {
+      case 'open':
+        actions.add(_StatusAction(Icons.play_arrow, 'Iniciar', 'in_progress', Colors.orange));
+        break;
+      case 'in_progress':
+        actions.add(_StatusAction(Icons.check_circle, 'Resolver', 'resolved', Colors.green));
+        break;
+      case 'resolved':
+        actions.add(_StatusAction(Icons.lock, 'Fechar', 'closed', Colors.blue));
+        actions.add(_StatusAction(Icons.refresh, 'Reabrir', 'open', Colors.red));
+        break;
+      case 'closed':
+        actions.add(_StatusAction(Icons.refresh, 'Reabrir', 'open', Colors.red));
+        break;
+    }
+
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: actions.map((a) => ActionChip(
+        avatar: Icon(a.icon, size: 14, color: a.color),
+        label: Text(a.label, style: TextStyle(fontSize: 11, color: a.color)),
+        onPressed: () async {
+          final confirm = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Alterar status'),
+              content: Text('${a.label} "${incident.title}"?'),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Confirmar')),
+              ],
+            ),
+          );
+          if (confirm == true && mounted) {
+            await ip.updateIncident(widget.projectId, incident.id, {'status': a.newStatus});
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Status alterado para ${a.label}')),
+              );
+            }
+          }
+        },
+      )).toList(),
+    );
+  }
+
   Widget _chip(String label, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -189,4 +242,12 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
       ),
     );
   }
+}
+
+class _StatusAction {
+  final IconData icon;
+  final String label;
+  final String newStatus;
+  final Color color;
+  _StatusAction(this.icon, this.label, this.newStatus, this.color);
 }

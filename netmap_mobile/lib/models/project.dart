@@ -22,14 +22,15 @@ class Project {
   factory Project.fromJson(Map<String, dynamic> json) {
     return Project(
       id: json['id']?.toString() ?? '',
-      nome: json['nome'] as String? ?? '',
-      cliente: json['cliente'] as String?,
-      cidade: json['cidade'] as String?,
+      nome: (json['nome'] as String? ?? json['name'] as String?) ?? '',
+      cliente: json['cliente'] as String? ?? json['client'] as String?,
+      cidade: json['cidade'] as String? ?? json['city'] as String?,
       uf: json['uf'] as String?,
       status: json['status'] as String?,
       elementCount: json['element_count'] as int? ??
-          (json['elements'] is List ? (json['elements'] as List).length : 0),
-      connectionCount: json['connection_count'] as int? ?? 0,
+          (json['elements'] is int ? json['elements'] as int : 0),
+      connectionCount: json['connection_count'] as int? ??
+          (json['connections'] is int ? json['connections'] as int : 0),
     );
   }
 

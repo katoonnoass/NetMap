@@ -19,5 +19,8 @@ netmap_mobile/.dart_tool/
 netmap_mobile/build/
 netmap_mobile/.flutter-plugins
 netmap_mobile/.flutter-plugins-dependencies
+netmap_mobile/android/.gradle/
+netmap_mobile/android/local.properties
+netmap_mobile/pubspec.lock
 
 static/netmap_mobile.apk

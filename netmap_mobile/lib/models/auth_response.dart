@@ -5,6 +5,7 @@ class AuthResponse {
   final String role;
   final Map<String, dynamic> permissions;
   final bool passwordNeedsRotation;
+  final String? error;
 
   AuthResponse({
     required this.ok,
@@ -13,6 +14,7 @@ class AuthResponse {
     required this.role,
     required this.permissions,
     this.passwordNeedsRotation = false,
+    this.error,
   });
 
   bool get canEdit => permissions['edit_elements'] == true;
@@ -27,6 +29,7 @@ class AuthResponse {
           json['permissions'] as Map<String, dynamic>? ?? {},
       passwordNeedsRotation:
           json['password_needs_rotation'] as bool? ?? false,
+      error: json['error'] as String?,
     );
   }
 }
