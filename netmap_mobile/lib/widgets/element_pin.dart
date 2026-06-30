@@ -1,52 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:netmap_mobile/config/element_types.dart';
 import 'package:netmap_mobile/models/element.dart';
 
 class ElementPin extends StatelessWidget {
   final NetmapElement element;
   final VoidCallback onTap;
+  final bool highlight;
 
   const ElementPin({
     super.key,
     required this.element,
     required this.onTap,
+    this.highlight = false,
   });
-
-  Color _colorForTipo(String tipo) {
-    switch (tipo.toUpperCase()) {
-      case 'CTO':
-        return Colors.blue;
-      case 'DIO':
-        return Colors.red;
-      case 'POSTE':
-        return Colors.green;
-      case 'CAIXA':
-        return Colors.orange;
-      case 'CLIENTE':
-        return Colors.purple;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  IconData _iconForTipo(String tipo) {
-    switch (tipo.toUpperCase()) {
-      case 'CTO':
-        return Icons.account_tree;
-      case 'DIO':
-        return Icons.router;
-      case 'POSTE':
-        return Icons.electrical_services;
-      case 'CAIXA':
-        return Icons.inventory_2;
-      case 'CLIENTE':
-        return Icons.home;
-      default:
-        return Icons.location_on;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
+    final color = ElementTypes.colorFor(element.tipo);
     return GestureDetector(
       onTap: onTap,
       child: Column(
@@ -56,19 +26,22 @@ class ElementPin extends StatelessWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: _colorForTipo(element.tipo),
+              color: color,
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 2),
+              border: Border.all(
+                color: highlight ? Colors.orange : Colors.white,
+                width: highlight ? 3 : 2,
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.3),
-                  blurRadius: 4,
+                  color: highlight ? Colors.orange.withOpacity(0.5) : Colors.black.withOpacity(0.3),
+                  blurRadius: highlight ? 8 : 4,
                   offset: const Offset(0, 2),
                 ),
               ],
             ),
             child: Icon(
-              _iconForTipo(element.tipo),
+              ElementTypes.iconFor(element.tipo),
               color: Colors.white,
               size: 20,
             ),

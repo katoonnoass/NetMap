@@ -4,12 +4,14 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:netmap_mobile/config/api_config.dart';
+import 'package:netmap_mobile/config/element_types.dart';
 import 'package:netmap_mobile/models/address_result.dart';
 import 'package:netmap_mobile/models/element.dart';
 import 'package:netmap_mobile/providers/element_provider.dart';
 import 'package:netmap_mobile/services/api_service.dart';
-import 'package:netmap_mobile/config/api_config.dart';
 import 'package:netmap_mobile/widgets/error_banner.dart';
+import 'package:netmap_mobile/widgets/photo_grid.dart';
 
 class ElementFormScreen extends StatefulWidget {
   final String projectId;
@@ -32,9 +34,10 @@ class _ElementFormScreenState extends State<ElementFormScreen> {
   String? _fotoPath;
   final _picker = ImagePicker();
   final _api = ApiService();
-  final _tipos = const ['CTO','DIO','POSTE','CAIXA','CLIENTE','OUTRO'];
-  final _statuses = const ['ativo','inativo','previsto'];
+  final _tipos = ElementTypes.all;
+  final _statuses = ElementTypes.statuses;
   bool get _edit => widget.element != null;
+  List<Map<String, dynamic>> _existingPhotos = [];
 
   @override
   void initState() {
@@ -43,7 +46,22 @@ class _ElementFormScreenState extends State<ElementFormScreen> {
       final e = widget.element!;
       _nome.text = e.nome; _tipo = e.tipo; _status = e.status ?? 'ativo';
       _obs.text = e.observacao ?? ''; _endereco.text = e.endereco ?? ''; _cep.text = e.cep ?? '';
-    } else { _status = 'ativo'; }
+      _loadExistingPhotos();
+    } else {
+      _status = 'ativo';
+      if (!_tipos.contains(_tipo)) _tipo = 'CTO';
+    }
+  }
+
+  Future<void> _loadExistingPhotos() async {
+    if (!_edit) return;
+    try {
+      final response = await _api.get(ApiConfig.projectPhotosEndpoint(widget.projectId, widget.element!.id));
+      final data = response.data;
+      if (data is List) {
+        setState(() => _existingPhotos = data.cast<Map<String, dynamic>>());
+      }
+    } catch (_) {}
   }
 
   @override
@@ -57,7 +75,7 @@ class _ElementFormScreenState extends State<ElementFormScreen> {
     if (cep.isEmpty) return;
     setState(() => _loading = true);
     try {
-      final r = await ApiService().post(ApiConfig.addressCacheLookup, data: {'cep': cep});
+      final r = await _api.post(ApiConfig.addressCacheLookup, data: {'cep': cep});
       if (r.statusCode == 200 && r.data != null) {
         setState(() => _endereco.text = AddressResult.fromJson(r.data).displayAddress);
       } else { setState(() => _error = 'CEP não encontrado'); }
@@ -79,10 +97,26 @@ class _ElementFormScreenState extends State<ElementFormScreen> {
 
     final p = Provider.of<ElementProvider>(context, listen: false);
     try {
-      if (_edit) { await p.updateElement(widget.projectId, widget.element!.id, data); }
-      else {
-        final el = await p.addElement(widget.projectId, data);
-        if (el != null && _fotoPath != null) { await _uploadFoto(el.id); }
+      if (_edit) {
+        await p.updateElement(widget.projectId, widget.element!.id, data, photoPath: _fotoPath);
+        // Se online e tem foto, upload imediato
+        if (p.isOnline && _fotoPath != null) {
+          final ok = await _uploadFoto(widget.element!.id);
+          if (!ok) {
+            setState(() { _error = 'Elemento salvo, mas falha ao enviar foto'; _loading = false; });
+            return;
+          }
+        }
+      } else {
+        final el = await p.addElement(widget.projectId, data, photoPath: _fotoPath);
+        // Se online e tem foto, upload imediato
+        if (p.isOnline && el != null && _fotoPath != null) {
+          final ok = await _uploadFoto(el.id);
+          if (!ok) {
+            setState(() { _error = 'Elemento salvo, mas falha ao enviar foto'; _loading = false; });
+            return;
+          }
+        }
       }
       if (mounted) { Navigator.pop(context); }
     } catch (e) { setState(() => _error = 'Erro ao salvar: $e'); }
@@ -96,18 +130,20 @@ class _ElementFormScreenState extends State<ElementFormScreen> {
     } catch (_) { setState(() => _error = 'Erro ao abrir câmera'); }
   }
 
-  Future<void> _uploadFoto(int elementId) async {
-    if (_fotoPath == null) return;
+  Future<bool> _uploadFoto(int elementId) async {
+    if (_fotoPath == null) return true;
     try {
       final formData = FormData.fromMap({
         'file': await MultipartFile.fromFile(_fotoPath!),
       });
-      await _api.post(
+      await _api.multipartPost(
         ApiConfig.projectPhotosEndpoint(widget.projectId, elementId),
-        data: formData,
-        options: Options(contentType: 'multipart/form-data'),
+        formData,
       );
-    } catch (_) {}
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 
   Widget _field(TextEditingController c, String label, {String? Function(String?)? validator, int? maxLines, TextInputType? keyboard}) =>
@@ -130,12 +166,24 @@ class _ElementFormScreenState extends State<ElementFormScreen> {
               _gap(),
               _field(_nome, 'Nome *', validator: (v) => v == null || v.trim().isEmpty ? 'Nome obrigatório' : null),
               _gap(),
-              DropdownButtonFormField<String>(value: _tipo, decoration: const InputDecoration(labelText: 'Tipo *', border: OutlineInputBorder()),
-                items: _tipos.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+              DropdownButtonFormField<String>(
+                value: _tipos.contains(_tipo) ? _tipo : null,
+                decoration: const InputDecoration(labelText: 'Tipo *', border: OutlineInputBorder()),
+                items: _tipos.map((t) => DropdownMenuItem(
+                  value: t,
+                  child: Row(children: [
+                    Icon(ElementTypes.iconFor(t), size: 18, color: ElementTypes.colorFor(t)),
+                    const SizedBox(width: 8),
+                    Text(t),
+                  ]),
+                )).toList(),
                 onChanged: (v) => setState(() => _tipo = v),
-                validator: (v) => v == null || v.isEmpty ? 'Tipo obrigatório' : null),
+                validator: (v) => v == null || v.isEmpty ? 'Tipo obrigatório' : null,
+              ),
               _gap(),
-              DropdownButtonFormField<String>(value: _status, decoration: const InputDecoration(labelText: 'Status', border: OutlineInputBorder()),
+              DropdownButtonFormField<String>(
+                value: _statuses.contains(_status) ? _status : 'ativo',
+                decoration: const InputDecoration(labelText: 'Status', border: OutlineInputBorder()),
                 items: _statuses.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
                 onChanged: (v) => setState(() => _status = v)),
               _gap(),
@@ -176,6 +224,16 @@ class _ElementFormScreenState extends State<ElementFormScreen> {
                     ),
                   ),
                 ),
+              if (_existingPhotos.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text('Fotos do elemento', style: Theme.of(context).textTheme.titleSmall),
+                const SizedBox(height: 8),
+                PhotoGrid(
+                  projectId: widget.projectId,
+                  elementId: widget.element?.id ?? 0,
+                  photos: _existingPhotos,
+                ),
+              ],
               const SizedBox(height: 24),
               SizedBox(width: double.infinity, height: 48,
                 child: FilledButton(onPressed: _loading ? null : _salvar,
