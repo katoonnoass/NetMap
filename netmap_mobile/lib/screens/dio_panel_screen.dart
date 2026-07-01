@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:netmap_mobile/config/api_config.dart';
 import 'package:netmap_mobile/services/api_service.dart';
-import 'package:netmap_mobile/providers/element_provider.dart';
+import 'package:netmap_mobile/providers/cto_provider.dart';
 
 class DioPanelScreen extends StatefulWidget {
   final String projectId;
@@ -113,8 +113,8 @@ class _DioPanelScreenState extends State<DioPanelScreen> {
 
     if (result != null && mounted) {
       try {
-        final ep = Provider.of<ElementProvider>(context, listen: false);
-        await ep.updateDioPort(widget.projectId, dioId, portNum, {'status': result});
+        final cp = Provider.of<CtoProvider>(context, listen: false);
+        await cp.updateDioPort(widget.projectId, dioId, portNum, {'status': result});
         _load();
       } catch (_) {}
     }

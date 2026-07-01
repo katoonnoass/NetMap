@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:netmap_mobile/models/cto_port.dart';
 import 'package:netmap_mobile/models/element.dart';
 import 'package:netmap_mobile/providers/element_provider.dart';
+import 'package:netmap_mobile/providers/cto_provider.dart';
 
 class CtoClientsScreen extends StatefulWidget {
   final String projectId;
@@ -24,13 +25,14 @@ class _CtoClientsScreenState extends State<CtoClientsScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     final ep = Provider.of<ElementProvider>(context, listen: false);
+    final cp = Provider.of<CtoProvider>(context, listen: false);
     if (ep.elements.isEmpty) {
       await ep.fetchElements(widget.projectId);
     }
     final ctos = ep.elements.where((e) => e.tipo.toLowerCase() == 'cto').toList();
     final result = <_CtoWithClients>[];
     for (final cto in ctos) {
-      final ports = await ep.fetchCtoPorts(widget.projectId, cto.id);
+      final ports = await cp.fetchCtoPorts(widget.projectId, cto.id);
       final clients = ports.where((p) => p.isOccupied && p.clientNome != null).toList();
       result.add(_CtoWithClients(cto: cto, ports: ports, clients: clients));
     }

@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:netmap_mobile/config/api_config.dart';
+import 'package:go_router/go_router.dart';
 import 'package:netmap_mobile/models/project.dart';
 import 'package:netmap_mobile/providers/auth_provider.dart';
 import 'package:netmap_mobile/providers/project_provider.dart';
 import 'package:netmap_mobile/services/api_service.dart';
-import 'package:netmap_mobile/screens/map_screen.dart';
+import 'package:netmap_mobile/config/api_config.dart';
+import 'package:netmap_mobile/widgets/offline_sync_indicator.dart';
 
 class ProjectListScreen extends StatefulWidget {
   const ProjectListScreen({super.key});
@@ -93,9 +94,8 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
   }
 
   void _open(Project project) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => MapScreen(project: project)),
-    );
+    context.pushNamed('project',
+        pathParameters: {'pid': project.id}, extra: project);
   }
 
   @override
@@ -106,6 +106,7 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
       appBar: AppBar(
         title: const Text('NetMap Mobile'),
         actions: [
+          const OfflineSyncIndicator(),
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Sair',

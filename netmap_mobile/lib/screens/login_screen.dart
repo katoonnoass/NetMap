@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:netmap_mobile/config/api_config.dart';
@@ -15,7 +16,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final _user = TextEditingController();
   final _pass = TextEditingController();
   bool _obscure = true;
-  bool _remember = false;
   String? _serverUrl;
 
   @override
@@ -28,14 +28,10 @@ class _LoginScreenState extends State<LoginScreen> {
     final storage = StorageService.instance;
     final saved = await storage.getServerUrl();
     final username = await storage.getUsername();
-    final password = await storage.getPassword();
-    final remember = await storage.getRememberMe();
     if (mounted) {
       setState(() {
         _serverUrl = saved;
-        _remember = remember;
-        if (remember && username != null) _user.text = username;
-        if (remember && password != null) _pass.text = password;
+        if (username != null) _user.text = username;
       });
     }
   }
@@ -51,22 +47,14 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!_formKey.currentState!.validate()) return;
     final auth = Provider.of<AuthProvider>(context, listen: false);
     await auth.login(_user.text.trim(), _pass.text);
-    if (mounted) {
-      if (auth.error != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(auth.error!),
-            backgroundColor: Theme.of(context).colorScheme.error,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-      if (auth.isAuthenticated && _remember) {
-        await StorageService.instance.savePassword(_pass.text);
-      } else if (auth.isAuthenticated) {
-        await StorageService.instance.deletePassword();
-      }
-      await StorageService.instance.saveRememberMe(_remember);
+    if (mounted && auth.error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(auth.error!),
+          backgroundColor: Theme.of(context).colorScheme.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
@@ -113,6 +101,30 @@ class _LoginScreenState extends State<LoginScreen> {
       normalized = 'http://$normalized';
     }
     if (normalized.endsWith('/')) normalized = normalized.substring(0, normalized.length - 1);
+
+    // Validate server is reachable
+    setState(() => _serverUrl = normalized);
+    final overlay = ScaffoldMessenger.of(context);
+    try {
+      final dio = Dio(BaseOptions(
+        baseUrl: normalized,
+        connectTimeout: const Duration(seconds: 5),
+        receiveTimeout: const Duration(seconds: 5),
+      ));
+      await dio.head('/api/auth/me');
+    } catch (_) {
+      if (mounted) {
+        overlay.showSnackBar(
+          SnackBar(
+            content: Text('Servidor inacessivel em $normalized'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
+
     await StorageService.instance.saveServerUrl(normalized);
     ApiConfig.baseUrl = normalized;
     ApiService.resetInstance();
@@ -120,7 +132,7 @@ class _LoginScreenState extends State<LoginScreen> {
     await auth.logout();
     if (mounted) {
       setState(() => _serverUrl = normalized);
-      ScaffoldMessenger.of(context).showSnackBar(
+      overlay.showSnackBar(
         SnackBar(
           content: Text('Servidor alterado para $normalized'),
           behavior: SnackBarBehavior.floating,
@@ -220,26 +232,13 @@ class _LoginScreenState extends State<LoginScreen> {
                               border: const OutlineInputBorder(),
                               suffixIcon: IconButton(
                                 icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility),
+                                tooltip: _obscure ? 'Mostrar senha' : 'Ocultar senha',
                                 onPressed: () => setState(() => _obscure = !_obscure),
                               ),
                             ),
                             textInputAction: TextInputAction.done,
                             onFieldSubmitted: (_) => _submit(),
                             validator: (v) => v == null || v.isEmpty ? 'Informe a senha' : null,
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              Checkbox(
-                                value: _remember,
-                                onChanged: (v) => setState(() => _remember = v ?? false),
-                              ),
-                              GestureDetector(
-                                onTap: () => setState(() => _remember = !_remember),
-                                child: Text('Lembrar credenciais',
-                                  style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
-                              ),
-                            ],
                           ),
                           const SizedBox(height: 8),
                           SizedBox(

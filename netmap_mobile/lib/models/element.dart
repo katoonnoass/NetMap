@@ -1,27 +1,23 @@
-class NetmapElement {
-  final int id;
-  final String nome;
-  final String tipo;
-  final double? lat;
-  final double? lng;
-  final String? status;
-  final String? observacao;
-  final String? endereco;
-  final String? cep;
-  final String projetoId;
+import 'package:freezed_annotation/freezed_annotation.dart';
 
-  NetmapElement({
-    required this.id,
-    required this.nome,
-    required this.tipo,
-    this.lat,
-    this.lng,
-    this.status,
-    this.observacao,
-    this.endereco,
-    this.cep,
-    this.projetoId = '',
-  });
+part 'element.freezed.dart';
+
+@freezed
+class NetmapElement with _$NetmapElement {
+  const NetmapElement._();
+
+  const factory NetmapElement({
+    required int id,
+    required String nome,
+    required String tipo,
+    double? lat,
+    double? lng,
+    String? status,
+    String? observacao,
+    String? endereco,
+    String? cep,
+    @Default('') String projetoId,
+  }) = _NetmapElement;
 
   bool get hasCoords => lat != null && lng != null;
 
@@ -52,29 +48,4 @@ class NetmapElement {
         'endereco': endereco,
         'cep': cep,
       };
-
-  NetmapElement copyWith({
-    int? id,
-    String? nome,
-    String? tipo,
-    double? lat,
-    double? lng,
-    String? status,
-    String? observacao,
-    String? endereco,
-    String? cep,
-  }) {
-    return NetmapElement(
-      id: id ?? this.id,
-      nome: nome ?? this.nome,
-      tipo: tipo ?? this.tipo,
-      lat: lat ?? this.lat,
-      lng: lng ?? this.lng,
-      status: status ?? this.status,
-      observacao: observacao ?? this.observacao,
-      endereco: endereco ?? this.endereco,
-      cep: cep ?? this.cep,
-      projetoId: projetoId,
-    );
-  }
 }

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:netmap_mobile/models/cto_port.dart';
-import 'package:netmap_mobile/providers/element_provider.dart';
+import 'package:netmap_mobile/providers/cto_provider.dart';
 
 class CtoPortEditScreen extends StatefulWidget {
   final String projectId;
@@ -28,8 +28,8 @@ class _CtoPortEditScreenState extends State<CtoPortEditScreen> {
 
   Future<void> _loadPorts() async {
     setState(() => _loading = true);
-    final ep = Provider.of<ElementProvider>(context, listen: false);
-    final ports = await ep.fetchCtoPorts(widget.projectId, widget.ctoId);
+    final cp = Provider.of<CtoProvider>(context, listen: false);
+    final ports = await cp.fetchCtoPorts(widget.projectId, widget.ctoId);
     if (mounted) setState(() { _ports = ports; _loading = false; });
   }
 
@@ -86,8 +86,8 @@ class _CtoPortEditScreenState extends State<CtoPortEditScreen> {
                       icon: const Icon(Icons.call_split, size: 16),
                       label: const Text('Splitter 1:2'),
                       onPressed: () async {
-                        final ep = Provider.of<ElementProvider>(context, listen: false);
-                        final ok = await ep.addSplitter(
+                        final cp = Provider.of<CtoProvider>(context, listen: false);
+                        final ok = await cp.addSplitter(
                           widget.projectId, widget.ctoId, port.num, '1:2');
                         if (ctx.mounted) {
                           ScaffoldMessenger.of(ctx).showSnackBar(
@@ -104,8 +104,8 @@ class _CtoPortEditScreenState extends State<CtoPortEditScreen> {
                       icon: const Icon(Icons.call_split, size: 16),
                       label: const Text('Splitter 1:4'),
                       onPressed: () async {
-                        final ep = Provider.of<ElementProvider>(context, listen: false);
-                        final ok = await ep.addSplitter(
+                        final cp = Provider.of<CtoProvider>(context, listen: false);
+                        final ok = await cp.addSplitter(
                           widget.projectId, widget.ctoId, port.num, '1:4');
                         if (ctx.mounted) {
                           ScaffoldMessenger.of(ctx).showSnackBar(
@@ -123,8 +123,8 @@ class _CtoPortEditScreenState extends State<CtoPortEditScreen> {
                   label: Text('Splitter ${port.splitterType}'),
                   deleteIcon: const Icon(Icons.close, size: 16),
                   onDeleted: () async {
-                    final ep = Provider.of<ElementProvider>(context, listen: false);
-                    final ok = await ep.removeSplitter(
+                    final cp = Provider.of<CtoProvider>(context, listen: false);
+                    final ok = await cp.removeSplitter(
                       widget.projectId, widget.ctoId, port.num);
                     if (ctx.mounted) {
                       ScaffoldMessenger.of(ctx).showSnackBar(
@@ -138,7 +138,7 @@ class _CtoPortEditScreenState extends State<CtoPortEditScreen> {
               const SizedBox(height: 16),
               FilledButton(
                 onPressed: () async {
-                  final ep = Provider.of<ElementProvider>(context, listen: false);
+                  final cp = Provider.of<CtoProvider>(context, listen: false);
                   final data = <String, dynamic>{'status': selectedStatus};
                   final clientVal = clientCtrl.text.trim();
                   if (clientVal.isNotEmpty) {
@@ -152,7 +152,7 @@ class _CtoPortEditScreenState extends State<CtoPortEditScreen> {
                   if (obsCtrl.text.trim().isNotEmpty) {
                     data['obs'] = obsCtrl.text.trim();
                   }
-                  final ok = await ep.updateCtoPort(
+                  final ok = await cp.updateCtoPort(
                     widget.projectId, widget.ctoId, port.num, data);
                   if (ctx.mounted) {
                     ScaffoldMessenger.of(ctx).showSnackBar(

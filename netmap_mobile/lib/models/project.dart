@@ -1,23 +1,21 @@
-class Project {
-  final String id;
-  final String nome;
-  final String? cliente;
-  final String? cidade;
-  final String? uf;
-  final String? status;
-  final int elementCount;
-  final int connectionCount;
+import 'package:freezed_annotation/freezed_annotation.dart';
 
-  Project({
-    required this.id,
-    required this.nome,
-    this.cliente,
-    this.cidade,
-    this.uf,
-    this.status,
-    this.elementCount = 0,
-    this.connectionCount = 0,
-  });
+part 'project.freezed.dart';
+
+@freezed
+class Project with _$Project {
+  const Project._();
+
+  const factory Project({
+    required String id,
+    required String nome,
+    String? cliente,
+    String? cidade,
+    String? uf,
+    String? status,
+    @Default(0) int elementCount,
+    @Default(0) int connectionCount,
+  }) = _Project;
 
   factory Project.fromJson(Map<String, dynamic> json) {
     return Project(

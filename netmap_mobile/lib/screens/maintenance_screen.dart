@@ -102,7 +102,7 @@ class _MaintenanceScreenState extends State<MaintenanceScreen>
           ],
         ),
         actions: [
-          IconButton(icon: const Icon(Icons.add), onPressed: _addMaintenance),
+          IconButton(icon: const Icon(Icons.add), tooltip: 'Nova manutencao', onPressed: _addMaintenance),
         ],
       ),
       body: Consumer<MaintenanceProvider>(

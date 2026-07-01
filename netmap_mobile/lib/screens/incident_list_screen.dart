@@ -162,6 +162,7 @@ class _IncidentListScreenState extends State<IncidentListScreen> {
       floatingActionButton: FloatingActionButton(
         heroTag: 'add_incident',
         onPressed: () => _openForm(),
+        tooltip: 'Novo incidente',
         child: const Icon(Icons.add),
       ),
     );

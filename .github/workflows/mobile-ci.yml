@@ -1,0 +1,35 @@
+name: NetMap Mobile CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'netmap_mobile/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'netmap_mobile/**'
+
+defaults:
+  run:
+    working-directory: netmap_mobile
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.x
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test --coverage
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        if: github.event_name == 'pull_request'
+        with:
+          directory: netmap_mobile/coverage
+          flags: mobile
+          verbose: true

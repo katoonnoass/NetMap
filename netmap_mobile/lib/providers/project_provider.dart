@@ -14,6 +14,16 @@ class ProjectProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
 
+  /// Normaliza resposta da API, extraindo lista independente do formato
+  List<dynamic> _extractList(dynamic data) {
+    if (data is List) return data;
+    if (data is Map<String, dynamic>) {
+      if (data.containsKey('items') && data['items'] is List) return data['items'] as List;
+      if (data.containsKey('projects') && data['projects'] is List) return data['projects'] as List;
+    }
+    return [];
+  }
+
   Future<void> fetchProjects() async {
     if (_isLoading) return;
     _isLoading = true;
@@ -22,22 +32,10 @@ class ProjectProvider extends ChangeNotifier {
 
     try {
       final response = await _api.get(ApiConfig.projectsEndpoint);
-      final data = response.data;
-      if (data is List) {
-        _projects = data
-            .map((j) => Project.fromJson(j as Map<String, dynamic>))
-            .toList();
-      } else if (data is Map<String, dynamic> && data.containsKey('projects')) {
-        _projects = (data['projects'] as List)
-            .map((j) => Project.fromJson(j as Map<String, dynamic>))
-            .toList();
-      } else if (data is Map<String, dynamic> && data.containsKey('items')) {
-        _projects = (data['items'] as List)
-            .map((j) => Project.fromJson(j as Map<String, dynamic>))
-            .toList();
-      } else {
-        _projects = [];
-      }
+      final rawList = _extractList(response.data);
+      _projects = rawList
+          .map((j) => Project.fromJson(j as Map<String, dynamic>))
+          .toList();
     } on ApiException catch (e) {
       _error = e.message;
     } catch (e) {

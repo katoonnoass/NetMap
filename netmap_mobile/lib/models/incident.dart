@@ -1,77 +1,89 @@
-class Incident {
-  final int id;
-  final String title;
-  final String status;
-  final String severity;
-  final String category;
-  final String assignedTo;
-  final int? elementId;
-  final String notes;
-  final List<IncidentComment> comments;
-  final DateTime createdAt;
-  final String projectId;
+import 'package:freezed_annotation/freezed_annotation.dart';
 
-  Incident({
-    required this.id,
-    required this.title,
-    this.status = 'open',
-    this.severity = 'medium',
-    this.category = 'rede',
-    this.assignedTo = '',
-    this.elementId,
-    this.notes = '',
-    this.comments = const [],
-    required this.createdAt,
-    required this.projectId,
-  });
+part 'incident.freezed.dart';
+
+DateTime _parseDateTime(String? dateStr) {
+  if (dateStr == null || dateStr.isEmpty) return DateTime.now();
+  try {
+    return DateTime.parse(dateStr);
+  } catch (_) {
+    try {
+      return DateTime.parse(dateStr.replaceFirst(' ', 'T'));
+    } catch (_) {
+      return DateTime.now();
+    }
+  }
+}
+
+@freezed
+class Incident with _$Incident {
+  const Incident._();
+
+  const factory Incident({
+    required int id,
+    required String title,
+    @Default('open') String status,
+    @Default('medium') String severity,
+    @Default('rede') String category,
+    @Default('') String assignedTo,
+    int? elementId,
+    @Default('') String notes,
+    @Default([]) List<IncidentComment> comments,
+    required DateTime createdAt,
+    required String projectId,
+  }) = _Incident;
 
   String get severityLabel {
     switch (severity) {
-      case 'low': return 'Baixa';
-      case 'medium': return 'Média';
-      case 'high': return 'Alta';
-      case 'critical': return 'Crítica';
-      default: return severity;
+      case 'low':
+        return 'Baixa';
+      case 'medium':
+        return 'Média';
+      case 'high':
+        return 'Alta';
+      case 'critical':
+        return 'Crítica';
+      default:
+        return severity;
     }
   }
 
   String get statusLabel {
     switch (status) {
-      case 'open': return 'Aberto';
-      case 'in_progress': return 'Em Andamento';
-      case 'resolved': return 'Resolvido';
-      case 'closed': return 'Fechado';
-      default: return status;
+      case 'open':
+        return 'Aberto';
+      case 'in_progress':
+        return 'Em Andamento';
+      case 'resolved':
+        return 'Resolvido';
+      case 'closed':
+        return 'Fechado';
+      default:
+        return status;
     }
   }
 
   String get categoryLabel {
     switch (category) {
-      case 'rede': return 'Rede';
-      case 'hardware': return 'Hardware';
-      case 'software': return 'Software';
-      case 'seguranca': return 'Segurança';
-      case 'atendimento': return 'Atendimento';
-      case 'outro': return 'Outro';
-      default: return category;
+      case 'rede':
+        return 'Rede';
+      case 'hardware':
+        return 'Hardware';
+      case 'software':
+        return 'Software';
+      case 'seguranca':
+        return 'Segurança';
+      case 'atendimento':
+        return 'Atendimento';
+      case 'outro':
+        return 'Outro';
+      default:
+        return category;
     }
   }
 
   factory Incident.fromJson(Map<String, dynamic> json, {String projectId = ''}) {
     final commentsRaw = json['comments'] as List<dynamic>? ?? [];
-    DateTime parseDateTime(String? dateStr) {
-      if (dateStr == null || dateStr.isEmpty) return DateTime.now();
-      try {
-        return DateTime.parse(dateStr);
-      } catch (_) {
-        try {
-          return DateTime.parse(dateStr.replaceFirst(' ', 'T'));
-        } catch (_) {
-          return DateTime.now();
-        }
-      }
-    }
-
     return Incident(
       id: json['id'] as int? ?? 0,
       title: json['title'] as String? ?? '',
@@ -84,8 +96,10 @@ class Incident {
       comments: commentsRaw
           .map((c) => IncidentComment.fromJson(c as Map<String, dynamic>))
           .toList(),
-      createdAt: parseDateTime(json['created_at'] as String?),
-      projectId: projectId.isNotEmpty ? projectId : (json['project_id'] as String? ?? ''),
+      createdAt: _parseDateTime(json['created_at'] as String?),
+      projectId: projectId.isNotEmpty
+          ? projectId
+          : (json['project_id'] as String? ?? ''),
     );
   }
 
@@ -102,34 +116,6 @@ class Incident {
         'created_at': createdAt.toIso8601String(),
         'project_id': projectId,
       };
-
-  Incident copyWith({
-    int? id,
-    String? title,
-    String? status,
-    String? severity,
-    String? category,
-    String? assignedTo,
-    int? elementId,
-    String? notes,
-    List<IncidentComment>? comments,
-    DateTime? createdAt,
-    String? projectId,
-  }) {
-    return Incident(
-      id: id ?? this.id,
-      title: title ?? this.title,
-      status: status ?? this.status,
-      severity: severity ?? this.severity,
-      category: category ?? this.category,
-      assignedTo: assignedTo ?? this.assignedTo,
-      elementId: elementId ?? this.elementId,
-      notes: notes ?? this.notes,
-      comments: comments ?? this.comments,
-      createdAt: createdAt ?? this.createdAt,
-      projectId: projectId ?? this.projectId,
-    );
-  }
 }
 
 class IncidentComment {
@@ -146,24 +132,11 @@ class IncidentComment {
   });
 
   factory IncidentComment.fromJson(Map<String, dynamic> json) {
-    DateTime parseDateTime(String? dateStr) {
-      if (dateStr == null || dateStr.isEmpty) return DateTime.now();
-      try {
-        return DateTime.parse(dateStr);
-      } catch (_) {
-        try {
-          return DateTime.parse(dateStr.replaceFirst(' ', 'T'));
-        } catch (_) {
-          return DateTime.now();
-        }
-      }
-    }
-
     return IncidentComment(
       id: json['id'] as int? ?? 0,
       author: json['author'] as String? ?? '',
       text: json['text'] as String? ?? '',
-      createdAt: parseDateTime(json['created_at'] as String?),
+      createdAt: _parseDateTime(json['created_at'] as String?),
     );
   }
 

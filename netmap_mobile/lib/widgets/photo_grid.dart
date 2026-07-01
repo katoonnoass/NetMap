@@ -101,15 +101,19 @@ class _PhotoGridState extends State<PhotoGrid> {
               ),
               Positioned(
                 top: 4, right: 4,
-                child: GestureDetector(
-                  onTap: () => _delete(filename),
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: Colors.black54,
-                      borderRadius: BorderRadius.circular(12),
+                child: Semantics(
+                  label: 'Excluir foto',
+                  button: true,
+                  child: GestureDetector(
+                    onTap: () => _delete(filename),
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.close, size: 14, color: Colors.white),
                     ),
-                    child: const Icon(Icons.close, size: 14, color: Colors.white),
                   ),
                 ),
               ),

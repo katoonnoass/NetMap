@@ -29,22 +29,11 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Check if we have an API key (Bearer auth)
+      // Check if we have an API key (Bearer auth) or session cookie
       final apiKey = await StorageService.instance.getApiKey();
-      if (apiKey != null && apiKey.isNotEmpty) {
-        final hasSession = await _authService.checkSession();
-        if (hasSession) {
-          _authResponse = await _authService.me();
-        }
-      } else {
-        // Try session cookie fallback
-        final cookie = await StorageService.instance.getCookie();
-        if (cookie != null && cookie.isNotEmpty) {
-          final hasSession = await _authService.checkSession();
-          if (hasSession) {
-            _authResponse = await _authService.me();
-          }
-        }
+      final cookie = await StorageService.instance.getCookie();
+      if ((apiKey != null && apiKey.isNotEmpty) || (cookie != null && cookie.isNotEmpty)) {
+        _authResponse = await _authService.checkSession();
       }
     } on ApiException {
       // Session expired — user needs to log in

@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_tile_caching/flutter_map_tile_caching.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
@@ -10,6 +12,8 @@ import 'package:netmap_mobile/models/cto_port.dart';
 import 'package:netmap_mobile/models/project.dart';
 import 'package:netmap_mobile/config/element_types.dart';
 import 'package:netmap_mobile/providers/element_provider.dart';
+import 'package:netmap_mobile/providers/connection_provider.dart';
+import 'package:netmap_mobile/providers/cto_provider.dart';
 import 'package:netmap_mobile/providers/auth_provider.dart';
 import 'package:netmap_mobile/widgets/element_pin.dart';
 import 'package:netmap_mobile/widgets/loading_overlay.dart';
@@ -32,31 +36,9 @@ import 'package:netmap_mobile/screens/cable_screen.dart';
 import 'package:netmap_mobile/providers/fence_provider.dart';
 import 'package:netmap_mobile/widgets/signal_measurement_dialog.dart';
 import 'package:netmap_mobile/widgets/service_checklist.dart';
+import 'package:netmap_mobile/widgets/offline_sync_indicator.dart';
 
 enum _MapLayer { osm, satellite, dark }
-
-class _OsmTileProvider extends TileProvider {
-  static final _instance = _OsmTileProvider._();
-  _OsmTileProvider._();
-  factory _OsmTileProvider() => _instance;
-  @override
-  ImageProvider getImage(TileCoordinates coordinates, TileLayer options) {
-    return NetworkImage(
-      getTileUrl(coordinates, options),
-      headers: const {'User-Agent': 'NetMapMobile/1.0'},
-    );
-  }
-}
-
-class _PlainTileProvider extends TileProvider {
-  static final _instance = _PlainTileProvider._();
-  _PlainTileProvider._();
-  factory _PlainTileProvider() => _instance;
-  @override
-  ImageProvider getImage(TileCoordinates coordinates, TileLayer options) {
-    return NetworkImage(getTileUrl(coordinates, options));
-  }
-}
 
 class MapScreen extends StatefulWidget {
   final Project project;
@@ -75,19 +57,26 @@ class _MapScreenState extends State<MapScreen> {
   double _radiusKm = 1.0;
   LatLng? _radiusCenter;
 
+  final FMTCStore _offlineStore = FMTCStore('offline_map');
+  StreamSubscription<DownloadProgress>? _downloadSub;
+  bool _isDownloading = false;
+  String _offlineStatus = '';
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final ep = Provider.of<ElementProvider>(context, listen: false);
       ep.fetchElements(widget.project.id);
-      ep.fetchConnections(widget.project.id);
+      Provider.of<ConnectionProvider>(context, listen: false).fetchConnections(widget.project.id);
       Provider.of<FenceProvider>(context, listen: false).fetchFences(widget.project.id);
+      _offlineStore.manage.create().then((_) => _updateOfflineStatus());
     });
   }
 
   @override
   void dispose() {
+    _downloadSub?.cancel();
     _mapController.dispose();
     super.dispose();
   }
@@ -177,11 +166,10 @@ class _MapScreenState extends State<MapScreen> {
 
   void _sheet(NetmapElement e) {
     final isCto = e.tipo.toLowerCase() == 'cto';
-    final ep = Provider.of<ElementProvider>(context, listen: false);
     final canEdit = Provider.of<AuthProvider>(context, listen: false).canEdit;
 
     // Find connections involving this element
-    final relatedConnections = ep.connections.where((c) =>
+    final relatedConnections = Provider.of<ConnectionProvider>(context, listen: false).connections.where((c) =>
       c.from == e.id || c.to == e.id
     ).toList();
     final brokenConnections = relatedConnections.where((c) => c.broken).toList();
@@ -386,9 +374,9 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Future<void> _toggleBroken(NetmapElement e, List connections, BuildContext ctx) async {
-    final ep = Provider.of<ElementProvider>(context, listen: false);
+    final cp = Provider.of<ConnectionProvider>(context, listen: false);
     for (final c in connections) {
-      await ep.toggleConnectionBroken(widget.project.id, c.id, !c.broken);
+      await cp.toggleConnectionBroken(widget.project.id, c.id, !c.broken);
     }
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -472,9 +460,9 @@ class _MapScreenState extends State<MapScreen> {
     return Colors.blue;
   }
 
-  List<Polyline> _buildConnectionPolylines(ElementProvider ep) {
+  List<Polyline> _buildConnectionPolylines(ElementProvider ep, ConnectionProvider cp) {
     final elementMap = {for (final e in ep.elements) e.id: e};
-    return ep.connections.where((c) {
+    return cp.connections.where((c) {
       final from = elementMap[c.from];
       final to = elementMap[c.to];
       return from?.hasCoords == true && to?.hasCoords == true;
@@ -593,6 +581,15 @@ class _MapScreenState extends State<MapScreen> {
                   ));
                 },
               ),
+              ListTile(
+                leading: Icon(Icons.download, color: _isDownloading ? Colors.amber : null),
+                title: const Text('Mapa Offline'),
+                subtitle: _offlineStatus.isNotEmpty ? Text(_offlineStatus) : null,
+                onTap: () {
+                  Navigator.pop(context);
+                  _showOfflineDownloadDialog();
+                },
+              ),
               const Divider(),
               ListTile(
                 leading: const Icon(Icons.swap_horiz),
@@ -695,12 +692,13 @@ class _MapScreenState extends State<MapScreen> {
               ])),
             ],
           ),
-          IconButton(icon: const Icon(Icons.add), onPressed: () => _openForm()),
+          const OfflineSyncIndicator(),
+          IconButton(icon: const Icon(Icons.add), tooltip: 'Adicionar elemento', onPressed: () => _openForm()),
         ],
       ),
       body: RepaintBoundary(
-        child: Consumer<ElementProvider>(
-          builder: (ctx, ep, _) {
+        child: Consumer2<ElementProvider, ConnectionProvider>(
+          builder: (ctx, ep, cp, _) {
             final visibleElements = ep.elementsWithCoords.where((e) {
               if (_draftMode && e.status != 'draft') return false;
               if (_radiusCenter != null && _radiusMode) {
@@ -713,7 +711,7 @@ class _MapScreenState extends State<MapScreen> {
               point: LatLng(e.lat!, e.lng!), width: 80, height: 80,
               child: ElementPin(element: e, onTap: () => _sheet(e)),
             )).toList();
-            final polylines = _buildConnectionPolylines(ep);
+            final polylines = _buildConnectionPolylines(ep, cp);
             List<Polygon> extraPolygons = [];
             if (_radiusCenter != null && _radiusMode) {
               final pts = <LatLng>[];
@@ -742,9 +740,12 @@ class _MapScreenState extends State<MapScreen> {
                 children: [
                   TileLayer(
                     urlTemplate: _tileUrl,
-                    tileProvider: _layer == _MapLayer.osm
-                        ? _OsmTileProvider()
-                        : _PlainTileProvider(),
+                    tileProvider: _offlineStore.getTileProvider(
+                      headers: const {'User-Agent': 'NetMapMobile/1.0'},
+                      settings: FMTCTileProviderSettings(
+                        behavior: CacheBehavior.cacheFirst,
+                      ),
+                    ),
                   ),
                   PolylineLayer(polylines: polylines),
                   if (_showFences) PolygonLayer(polygons: _buildFencePolygons(context)),
@@ -757,10 +758,11 @@ class _MapScreenState extends State<MapScreen> {
               Positioned(
                 right: 16, bottom: 16,
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  FloatingActionButton.small(heroTag: 'loc', onPressed: _myLocation, child: const Icon(Icons.my_location)),
+                  FloatingActionButton.small(heroTag: 'loc', tooltip: 'Minha localizacao', onPressed: _myLocation, child: const Icon(Icons.my_location)),
                   const SizedBox(height: 8),
                   FloatingActionButton(
-                    heroTag: 'add', onPressed: _togglePlacement,
+                    heroTag: 'add', tooltip: _placement ? 'Cancelar' : 'Adicionar no mapa',
+                    onPressed: _togglePlacement,
                     backgroundColor: _placement ? Theme.of(context).colorScheme.tertiaryContainer : null,
                     child: Icon(_placement ? Icons.close : Icons.add_location_alt),
                   ),
@@ -810,6 +812,206 @@ class _MapScreenState extends State<MapScreen> {
       ),
     );
   }
+
+  Future<void> _updateOfflineStatus() async {
+    try {
+      final stats = await _offlineStore.stats.all;
+      if (mounted) {
+        final mb = (stats.size / 1024).toStringAsFixed(1);
+        setState(() => _offlineStatus = '${stats.length} tiles, $mb MB');
+      }
+    } catch (_) {}
+  }
+
+  void _showOfflineDownloadDialog() {
+    final bounds = _mapController.camera.visibleBounds;
+    int minZoom = 10, maxZoom = 16;
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Baixar Mapa Offline'),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Camada atual: ${_layer.name}'),
+            const SizedBox(height: 8),
+            Text('Area: ${bounds.south.toStringAsFixed(3)} a ${bounds.north.toStringAsFixed(3)}, '
+                '${bounds.west.toStringAsFixed(3)} a ${bounds.east.toStringAsFixed(3)}'),
+            const SizedBox(height: 12),
+            Text('Zoom minimo: $minZoom'),
+            Slider(
+              value: minZoom.toDouble(), min: 5, max: 14, divisions: 9,
+              label: '$minZoom',
+              onChanged: (v) => setDialogState(() => minZoom = v.round()),
+            ),
+            Text('Zoom maximo: $maxZoom'),
+            Slider(
+              value: maxZoom.toDouble(), min: 11, max: 18, divisions: 7,
+              label: '$maxZoom',
+              onChanged: (v) => setDialogState(() => maxZoom = v.round()),
+            ),
+            if (minZoom >= maxZoom)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Text('Zoom maximo deve ser maior que minimo', style: TextStyle(color: Colors.red, fontSize: 12)),
+              ),
+            const SizedBox(height: 8),
+            const Text('Atencao: areas grandes em zoom alto consomem muitos dados.', style: TextStyle(fontSize: 11, color: Colors.grey)),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+            FilledButton(
+              onPressed: minZoom < maxZoom ? () {
+                Navigator.pop(ctx);
+                _startOfflineDownload(bounds, minZoom, maxZoom);
+              } : null,
+              child: const Text('Iniciar Download'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _startOfflineDownload(LatLngBounds bounds, int minZoom, int maxZoom) async {
+    if (_isDownloading) return;
+    setState(() => _isDownloading = true);
+
+    final region = RectangleRegion(bounds);
+    final downloadable = region.toDownloadable(
+      minZoom: minZoom,
+      maxZoom: maxZoom,
+      options: TileLayer(
+        urlTemplate: _tileUrl,
+        userAgentPackageName: 'com.netmap.mobile',
+      ),
+    );
+
+    final progressCtx = context;
+    showDialog(
+      context: progressCtx,
+      barrierDismissible: false,
+      builder: (ctx) => _OfflineDownloadProgress(
+        store: _offlineStore,
+        region: downloadable,
+        onComplete: () {
+          _updateOfflineStatus();
+          setState(() => _isDownloading = false);
+        },
+        onCancel: () => setState(() => _isDownloading = false),
+      ),
+    );
+  }
+}
+
+// ─── Offline Download Progress Dialog ──────────────────────────────
+
+class _OfflineDownloadProgress extends StatefulWidget {
+  final FMTCStore store;
+  final DownloadableRegion region;
+  final VoidCallback onComplete;
+  final VoidCallback onCancel;
+
+  const _OfflineDownloadProgress({
+    required this.store,
+    required this.region,
+    required this.onComplete,
+    required this.onCancel,
+  });
+
+  @override
+  State<_OfflineDownloadProgress> createState() => _OfflineDownloadProgressState();
+}
+
+class _OfflineDownloadProgressState extends State<_OfflineDownloadProgress> {
+  double _progress = 0;
+  int _cached = 0;
+  int _failed = 0;
+  int _skipped = 0;
+  int _total = 0;
+  double _speed = 0;
+  bool _complete = false;
+  StreamSubscription<DownloadProgress>? _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    _start();
+  }
+
+  Future<void> _start() async {
+    final stream = widget.store.download.startForeground(
+      region: widget.region,
+      parallelThreads: 5,
+      skipExistingTiles: true,
+      skipSeaTiles: true,
+    );
+
+    _sub = stream.listen(
+      (p) {
+        if (!mounted) return;
+        setState(() {
+          _progress = p.percentageProgress;
+          _cached = p.cachedTiles;
+          _failed = p.failedTiles;
+          _skipped = p.skippedTiles;
+          _total = p.maxTiles;
+          _speed = p.tilesPerSecond;
+          _complete = p.isComplete;
+        });
+      },
+      onError: (_) {
+        if (mounted) setState(() => _complete = true);
+      },
+      onDone: () {
+        if (mounted) {
+          setState(() => _complete = true);
+          widget.onComplete();
+        }
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(_complete ? 'Download Concluido' : 'Baixando Mapa...'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        LinearProgressIndicator(value: _progress / 100),
+        const SizedBox(height: 12),
+        Text('${_progress.toStringAsFixed(1)}%'),
+        const SizedBox(height: 8),
+        Text('Baixados: $_cached   Falhas: $_failed   Pulados: $_skipped'),
+        if (_total > 0) Text('Total: $_total tiles'),
+        Text('Velocidade: ${_speed.toStringAsFixed(1)} t/s'),
+      ]),
+      actions: [
+        if (!_complete)
+          TextButton(
+            onPressed: () {
+              _sub?.cancel();
+              widget.store.download.cancel();
+              widget.onCancel();
+              Navigator.pop(context);
+            },
+            child: const Text('Cancelar'),
+          ),
+        if (_complete)
+          FilledButton(
+            onPressed: () {
+              widget.onComplete();
+              Navigator.pop(context);
+            },
+            child: const Text('Fechar'),
+          ),
+      ],
+    );
+  }
 }
 
 // ─── CTO Ports Panel ───────────────────────────────────────────────
@@ -834,8 +1036,8 @@ class _CtoPortsPanelState extends State<_CtoPortsPanel> {
 
   Future<void> _loadPorts() async {
     setState(() => _loading = true);
-    final ep = Provider.of<ElementProvider>(context, listen: false);
-    final ports = await ep.fetchCtoPorts(
+    final cp = Provider.of<CtoProvider>(context, listen: false);
+    final ports = await cp.fetchCtoPorts(
       widget.element.projetoId,
       widget.element.id,
     );

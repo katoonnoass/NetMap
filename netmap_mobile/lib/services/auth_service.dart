@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:netmap_mobile/config/api_config.dart';
 import 'package:netmap_mobile/models/auth_response.dart';
 import 'package:netmap_mobile/services/api_service.dart';
@@ -33,6 +34,7 @@ class AuthService {
     }
 
     // 3. Create an API key for this mobile device
+    bool hasApiKey = false;
     try {
       final keyResp = await _api.rawPost(
         ApiConfig.apikeysEndpoint,
@@ -49,28 +51,24 @@ class AuthService {
           // Cookie no longer needed once we have the API key
           await StorageService.instance.deleteCookie();
           await StorageService.instance.deleteCsrfToken();
+          hasApiKey = true;
         }
       }
-    } catch (_) {
-      // API key creation failed — session auth without CSRF won't work for writes.
-      // User should still be able to read data.
+    } catch (e) {
+      // API key creation failed — continue with cookie + CSRF for reads
+      debugPrint('AuthService: API key creation failed: $e');
     }
 
-    return authResp;
+    return authResp.copyWith(usingApiKey: hasApiKey);
   }
 
-  Future<AuthResponse?> me() async {
-    final response = await _api.get(ApiConfig.meEndpoint);
-    final data = response.data as Map<String, dynamic>;
-    return AuthResponse.fromJson({...data, 'ok': true});
-  }
-
-  Future<bool> checkSession() async {
+  Future<AuthResponse?> checkSession() async {
     try {
-      await _api.get(ApiConfig.meEndpoint);
-      return true;
+      final response = await _api.get(ApiConfig.meEndpoint);
+      final data = response.data as Map<String, dynamic>;
+      return AuthResponse.fromJson({...data, 'ok': true});
     } on ApiException catch (e) {
-      if (e.statusCode == 401) return false;
+      if (e.statusCode == 401) return null;
       rethrow;
     }
   }

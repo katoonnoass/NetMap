@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:netmap_mobile/config/api_config.dart';
 import 'package:netmap_mobile/models/connection.dart';
 import 'package:netmap_mobile/providers/element_provider.dart';
+import 'package:netmap_mobile/providers/connection_provider.dart';
 import 'package:netmap_mobile/services/api_service.dart';
 import 'package:netmap_mobile/config/element_types.dart';
 
@@ -17,8 +18,9 @@ class _CableScreenState extends State<CableScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final cp = Provider.of<ConnectionProvider>(context, listen: false);
+      cp.fetchConnections(widget.projectId);
       final ep = Provider.of<ElementProvider>(context, listen: false);
-      ep.fetchConnections(widget.projectId);
       if (ep.elements.isEmpty) ep.fetchElements(widget.projectId);
     });
   }
@@ -30,10 +32,10 @@ class _CableScreenState extends State<CableScreen> {
   }
 
   Future<void> _toggleBroken(Connection c) async {
-    final ep = Provider.of<ElementProvider>(context, listen: false);
-    final ok = await ep.toggleConnectionBroken(widget.projectId, c.id, !c.broken);
+    final cp = Provider.of<ConnectionProvider>(context, listen: false);
+    final ok = await cp.toggleConnectionBroken(widget.projectId, c.id, !c.broken);
     if (ok) {
-      await ep.fetchConnections(widget.projectId);
+      await cp.fetchConnections(widget.projectId);
     }
   }
 
@@ -53,8 +55,8 @@ class _CableScreenState extends State<CableScreen> {
       final api = ApiService();
       try {
         await api.delete(ApiConfig.projectConnectionEndpoint(widget.projectId, c.id));
-        final ep = Provider.of<ElementProvider>(context, listen: false);
-        await ep.fetchConnections(widget.projectId);
+        final cp = Provider.of<ConnectionProvider>(context, listen: false);
+        await cp.fetchConnections(widget.projectId);
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -69,13 +71,14 @@ class _CableScreenState extends State<CableScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final ep = Provider.of<ElementProvider>(context);
-    final cables = ep.connections;
+    final cp = Provider.of<ConnectionProvider>(context);
+    final cables = cp.connections;
     final elementMap = {for (final e in ep.elements) e.id: e.nome};
 
     return Scaffold(
       appBar: AppBar(title: const Text('Cabos')),
       body: RefreshIndicator(
-        onRefresh: () => ep.fetchConnections(widget.projectId),
+        onRefresh: () => cp.fetchConnections(widget.projectId),
         child: cables.isEmpty
             ? Center(
                 child: Column(
@@ -167,6 +170,7 @@ class _CableScreenState extends State<CableScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showForm(),
+        tooltip: 'Adicionar conexao',
         child: const Icon(Icons.add),
       ),
     );
@@ -231,7 +235,7 @@ class _CableFormScreenState extends State<CableFormScreen> {
     if (_length.text.trim().isNotEmpty) data['length'] = double.tryParse(_length.text.trim());
 
     final api = ApiService();
-    final ep = Provider.of<ElementProvider>(context, listen: false);
+    final cp = Provider.of<ConnectionProvider>(context, listen: false);
     try {
       if (_edit) {
         await api.put(
@@ -244,7 +248,7 @@ class _CableFormScreenState extends State<CableFormScreen> {
           data: data,
         );
       }
-      await ep.fetchConnections(widget.projectId);
+      await cp.fetchConnections(widget.projectId);
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) {

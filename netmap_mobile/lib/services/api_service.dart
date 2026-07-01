@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:netmap_mobile/config/api_config.dart';
 import 'package:netmap_mobile/services/storage_service.dart';
+import 'package:netmap_mobile/di/service_locator.dart';
+import 'package:netmap_mobile/utils/logger.dart';
 
 class ApiException implements Exception {
   final int? statusCode;
@@ -39,7 +41,6 @@ class ApiService {
           if (cookie != null && cookie.isNotEmpty) {
             options.headers['Cookie'] = cookie;
           }
-          // Attach CSRF token to mutating requests when using cookie auth
           if (options.method != 'GET' && options.method != 'HEAD' && options.method != 'OPTIONS') {
             final csrf = await StorageService.instance.getCsrfToken();
             if (csrf != null) {
@@ -50,7 +51,6 @@ class ApiService {
         handler.next(options);
       },
       onError: (error, handler) {
-        // If CSRF error and we have cookie auth, try refreshing CSRF token and retry
         if (error.response?.statusCode == 400 &&
             error.response?.data is Map &&
             (error.response?.data as Map)['code'] == 'csrf_error') {
@@ -60,9 +60,20 @@ class ApiService {
         handler.next(error);
       },
     ));
+
+    _dio.interceptors.add(LogInterceptor(
+      request: true,
+      requestHeader: false,
+      requestBody: true,
+      responseHeader: false,
+      responseBody: true,
+      error: true,
+      logPrint: (obj) => log.d('[HTTP] $obj'),
+    ));
   }
 
   factory ApiService() {
+    if (getIt.isRegistered<ApiService>()) return getIt<ApiService>();
     _instance ??= ApiService._();
     return _instance!;
   }
@@ -165,8 +176,15 @@ class ApiService {
   }
 
   String _extractMessage(DioException e) {
-    if (e.response?.data is Map && e.response?.data['error'] != null) {
-      return e.response?.data['error'] as String;
+    final data = e.response?.data;
+    if (data is Map) {
+      if (data['error'] is String) return data['error'] as String;
+      if (data['error'] is Map) {
+        final errMap = data['error'] as Map;
+        return errMap['message']?.toString() ?? errMap['detail']?.toString() ?? 'Erro';
+      }
+      if (data['message'] is String) return data['message'] as String;
+      if (data['detail'] is String) return data['detail'] as String;
     }
     if (e.response?.statusMessage != null) {
       return e.response!.statusMessage!;

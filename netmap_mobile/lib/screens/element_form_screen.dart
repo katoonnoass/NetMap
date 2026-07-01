@@ -102,25 +102,16 @@ class _ElementFormScreenState extends State<ElementFormScreen> {
         if (p.isOnline && _fotoPath != null) {
           final ok = await _uploadFoto(widget.element!.id);
           if (!ok) {
-            setState(() { _error = 'Elemento salvo, mas falha ao enviar foto'; _loading = false; });
+            if (mounted) setState(() { _error = 'Elemento salvo, mas falha ao enviar foto'; _loading = false; });
             return;
           }
         }
       } else {
-        final el = await p.addElement(widget.projectId, data, photoPath: _fotoPath);
-        // Se online e tem foto, upload imediato
-        if (p.isOnline && el != null && _fotoPath != null) {
-          final ok = await _uploadFoto(el.id);
-          if (!ok) {
-            setState(() { _error = 'Elemento salvo, mas falha ao enviar foto'; _loading = false; });
-            return;
-          }
-        }
+        await p.addElement(widget.projectId, data, photoPath: _fotoPath);
       }
-      setState(() => _loading = false);
       if (mounted) { Navigator.pop(context); }
     } catch (e) {
-      setState(() { _error = 'Erro ao salvar: $e'; _loading = false; });
+      if (mounted) setState(() { _error = 'Erro ao salvar: $e'; _loading = false; });
     }
   }
 
